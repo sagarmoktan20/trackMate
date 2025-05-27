@@ -1,4 +1,4 @@
-package com.example.trackmatebackup.Screens
+package com.example.trackmate1.screens
 
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.fillMaxSize

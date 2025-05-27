@@ -5,5 +5,8 @@ sealed class NavigationItems(val route: String) {
     object Map : NavigationItems("map")
     object Profile : NavigationItems("profile")
     object Search: NavigationItems("search")
+    object Login: NavigationItems("Login")
+
+
 
 }

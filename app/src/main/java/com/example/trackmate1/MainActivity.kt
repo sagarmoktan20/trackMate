@@ -32,11 +32,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.trackmate1.screens.LoginScreen
+import com.example.trackmate1.screens.MapScreen
 import com.example.trackmate1.screens.ProfileScreen
 import com.example.trackmate1.screens.SearchScreen
 import com.example.trackmate1.ui.theme.Trackmate1Theme
-import com.example.trackmatebackup.Screens.MapScreen
+
 
 
 class MainActivity : ComponentActivity() {
@@ -59,14 +62,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+    askForPermission()
         setContent {
             Trackmate1Theme  {
                 MainScreen()
-
-
             }
         }
-    askForPermission()
+
     }
 
 
@@ -88,100 +90,110 @@ fun MainScreen(){
     val selected = remember {
         mutableStateOf(Icons.Default.Search)
     }
+    val currentRoute = navController
+        .currentBackStackEntryAsState().value?.destination?.route
+
+    val bottomBarRoutes = listOf(
+        NavigationItems.Search.route,
+        NavigationItems.Map.route,
+        NavigationItems.Profile.route
+    )
 
     Scaffold(
         bottomBar = {
-            BottomAppBar(containerColor = Color.Gray, contentColor = Color.White) {
-                // Search
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(8.dp)
-                        .clickable {
-                            selected.value = Icons.Default.Search
-                            navController.navigate(NavigationItems.Search.route) {
-                                popUpTo(0)
-                            }
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        modifier = Modifier.size(26.dp),
-                        tint = if (selected.value == Icons.Default.Search) Color.White else Color.Black
-                    )
-                    Text(
-                        text = "Search",
-                        fontSize = 12.sp,
-                        color = if (selected.value == Icons.Default.Search) Color.White else Color.Black,
-                        textAlign = TextAlign.Center
-                    )
+            if (currentRoute in bottomBarRoutes) {
+                BottomAppBar(containerColor = Color.Gray, contentColor = Color.White) {
+                    // Search
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(8.dp)
+                            .clickable {
+                                selected.value = Icons.Default.Search
+                                navController.navigate(NavigationItems.Search.route) {
+                                    popUpTo(0)
+                                }
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            modifier = Modifier.size(26.dp),
+                            tint = if (selected.value == Icons.Default.Search) Color.White else Color.Black
+                        )
+                        Text(
+                            text = "Search",
+                            fontSize = 12.sp,
+                            color = if (selected.value == Icons.Default.Search) Color.White else Color.Black,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Map
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(8.dp)
+                            .clickable {
+                                selected.value = Icons.Default.Menu
+                                navController.navigate(NavigationItems.Map.route) {
+                                    popUpTo(0)
+                                }
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Map",
+                            modifier = Modifier.size(26.dp),
+                            tint = if (selected.value == Icons.Default.Menu) Color.White else Color.Black
+                        )
+                        Text(
+                            text = "Map",
+                            fontSize = 12.sp,
+                            color = if (selected.value == Icons.Default.Menu) Color.White else Color.Black,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Profile
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(8.dp)
+                            .clickable {
+                                selected.value = Icons.Default.Person
+                                navController.navigate(NavigationItems.Profile.route) {
+                                    popUpTo(0)
+                                }
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Profile",
+                            modifier = Modifier.size(26.dp),
+                            tint = if (selected.value == Icons.Default.Person) Color.White else Color.Black
+                        )
+                        Text(
+                            text = "Profile",
+                            fontSize = 12.sp,
+                            color = if (selected.value == Icons.Default.Person) Color.White else Color.Black,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
 
-                // Map
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(8.dp)
-                        .clickable {
-                            selected.value = Icons.Default.Menu
-                            navController.navigate(NavigationItems.Map.route) {
-                                popUpTo(0)
-                            }
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Map",
-                        modifier = Modifier.size(26.dp),
-                        tint = if (selected.value == Icons.Default.Menu) Color.White else Color.Black
-                    )
-                    Text(
-                        text = "Map",
-                        fontSize = 12.sp,
-                        color = if (selected.value == Icons.Default.Menu) Color.White else Color.Black,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                // Profile
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(8.dp)
-                        .clickable {
-                            selected.value = Icons.Default.Person
-                            navController.navigate(NavigationItems.Profile.route) {
-                                popUpTo(0)
-                            }
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "Profile",
-                        modifier = Modifier.size(26.dp),
-                        tint = if (selected.value == Icons.Default.Person) Color.White else Color.Black
-                    )
-                    Text(
-                        text = "Profile",
-                        fontSize = 12.sp,
-                        color = if (selected.value == Icons.Default.Person) Color.White else Color.Black,
-                        textAlign = TextAlign.Center
-                    )
-                }
             }
-
-
         }
     ) {paddingValues ->
         NavHost(navController = navController,
-            startDestination = NavigationItems.Search.route,modifier = Modifier.padding(paddingValues)){
+            startDestination = NavigationItems.Login.route,modifier = Modifier.padding(paddingValues)){
             composable(NavigationItems.Search.route){ SearchScreen() }
             composable(NavigationItems.Map.route){ MapScreen() }
-            composable(NavigationItems.Profile.route){ ProfileScreen() }
+            composable(NavigationItems.Profile.route){ ProfileScreen(navController) }
+            composable(NavigationItems.Login.route){ LoginScreen(navController) }
         }
     }
 
