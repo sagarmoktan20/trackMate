@@ -1,6 +1,8 @@
 package com.example.trackmate1.screens
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,6 +32,8 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.Firebase
 
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.firestore
+
 //import kotlin.coroutines.jvm.internal.CompletedContinuation.context
 
 class PreferenceManager(context: Context) {
@@ -47,6 +51,7 @@ class PreferenceManager(context: Context) {
 
 
 
+@SuppressLint("SuspiciousIndentation")
 @Composable
 fun LoginScreen(navController:NavHostController){
     val context = LocalContext.current;
@@ -69,15 +74,6 @@ fun LoginScreen(navController:NavHostController){
         return
     }
 
-
-
-
-
-
-
-
-
-
     val googleSignInOption = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken("9964737077-gp26ao3ddcl27dni79sd6ugkkf1hpn2p.apps.googleusercontent.com")
@@ -99,9 +95,45 @@ fun LoginScreen(navController:NavHostController){
                     Toast.makeText(context,"Login Successful",Toast.LENGTH_SHORT).show()
                         isLoggedIn = true
                         prefManager.setLoginStatus(true);
+                        val currentUser = FirebaseAuth.getInstance().currentUser;
+
+                        if(currentUser!= null){
+                            val db = Firebase.firestore
+                        val name = currentUser?.displayName.toString();
+                        val email = currentUser?.email.toString();
+                        val phoneNumber = currentUser?.phoneNumber.toString();
+                        val image = currentUser?.photoUrl.toString();
+
+
+                            if (email != null) {
+                        // Create a new user with a first and last name
+                        val user = hashMapOf(
+                            "Name" to name,
+                            "email" to email,
+                            "phone" to phoneNumber,
+                            "imageUrl" to image
+                        )
+
+// Add a new document with a generated ID
+                        db.collection("users")
+                            .document(email)
+                            .set(user)
+                            .addOnSuccessListener { documentReference ->
+
+                            }
+                            .addOnFailureListener { e ->
+                                Log.w("fire1", "Error adding document", e)
+                            }}else {
+                                Log.e("firestore", "User email is null, skipping Firestore write")
+                            }
+
                     navController.navigate(NavigationItems.Search.route){
                         popUpTo("login") {inclusive = true}
+                        }
 
+                    }else{
+                            Log.w("SignIn", "signInWithCredential:failure", task.exception)
+                            Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
                     }
                     }else{
                         Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
