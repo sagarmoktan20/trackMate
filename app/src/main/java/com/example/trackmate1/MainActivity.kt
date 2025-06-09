@@ -259,6 +259,7 @@ fun MainScreen(){
         .currentBackStackEntryAsState().value?.destination?.route
 
     val bottomBarRoutes = listOf(
+
         NavigationItems.Search.route,
         NavigationItems.Map.route,
         NavigationItems.Profile.route
