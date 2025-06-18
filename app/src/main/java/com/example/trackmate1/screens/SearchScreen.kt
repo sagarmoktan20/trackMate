@@ -1,5 +1,6 @@
 package com.example.trackmate1.screens
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,15 +32,22 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.trackmate1.ui.theme.Trackmate1Theme
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.tasks.Task
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.firestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.FieldValue
 
 
 @Composable
@@ -93,9 +101,10 @@ fun SearchScreen() {
         Spacer(modifier = Modifier.height(8.dp))
 
         // 📋 List of Invitations
+        val context = LocalContext.current
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(invitationList) { email ->
-                InvitationItem(email = email)
+                InvitationItem(email = email,context = context)
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
@@ -153,7 +162,7 @@ fun sendInvite(searchText: String) {
 }
 
 @Composable
-fun InvitationItem(email: String) {
+fun InvitationItem(email: String,context: Context) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -169,11 +178,74 @@ fun InvitationItem(email: String) {
             // Accept Button
             Button(
                 onClick = {
-                    val firestoreDb = Firebase.firestore;
+                    val firestoreDb = Firebase.firestore
+                    val myEmail = FirebaseAuth.getInstance().currentUser?.email.toString()
+                    
+                    // First update the invite status
                     firestoreDb.collection("users")
-                        .document(FirebaseAuth.getInstance().currentUser?.email.toString())
-                        .collection("invites").document(email).update("invite_status",1)
+                        .document(myEmail)
+                        .collection("invites")
+                        .document(email)
+                        .update("invite_status", 1)
+                        .addOnSuccessListener {
+                            // After successful status update, create shared_locations document in sender's collection
+                            val sharedLocationData = hashMapOf(
+                                "status" to "active",
+                                "shared_by" to myEmail,
+                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                            )
+                            
+                            // Create the shared_locations document in the sender's collection
+                            firestoreDb.collection("users")
+                                .document(email)  // This is the sender's document
+                                .collection("shared_locations")
+                                .document(myEmail)  // This is the receiver's email
+                                .set(sharedLocationData)
+                                .addOnSuccessListener {
+                                    Log.d("Firestore", "Successfully created shared_locations document")
+                                    
+                                    // Now start sharing location updates
+                                    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+                                    
+                                    try {
+                                        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
+                                            .setWaitForAccurateLocation(false)
+                                            .setMinUpdateIntervalMillis(5000)
+                                            .setMaxUpdateDelayMillis(10000)
+                                            .build()
 
+                                        val locationCallback = object : LocationCallback() {
+                                            override fun onLocationResult(locationResult: LocationResult) {
+                                                locationResult.lastLocation?.let { location ->
+                                                    // Update the shared_locations document with new coordinates
+                                                    firestoreDb.collection("users")
+                                                        .document(email)  // Sender's document
+                                                        .collection("shared_locations")
+                                                        .document(myEmail)  // Receiver's email
+                                                        .update(
+                                                            mapOf(
+                                                                "latitude" to location.latitude,
+                                                                "longitude" to location.longitude,
+                                                                "timestamp" to FieldValue.serverTimestamp()
+                                                            )
+                                                        )
+                                                }
+                                            }
+                                        }
+
+                                        fusedLocationClient.requestLocationUpdates(
+                                            locationRequest,
+                                            locationCallback,
+                                            null
+                                        )
+                                    } catch (e: SecurityException) {
+                                        Log.e("SearchScreen", "Error requesting location updates", e)
+                                    }
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("Firestore", "Error creating shared_locations document", e)
+                                }
+                        }
                 },
                 modifier = Modifier.width(80.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Green)
@@ -185,10 +257,14 @@ fun InvitationItem(email: String) {
 
             // Reject Button
             Button(
-                onClick = { val firestoreDb = Firebase.firestore;
+                onClick = { 
+                    val firestoreDb = Firebase.firestore
                     firestoreDb.collection("users")
                         .document(FirebaseAuth.getInstance().currentUser?.email.toString())
-                        .collection("invites").document(email).update("invite_status",-1) },
+                        .collection("invites")
+                        .document(email)
+                        .update("invite_status", -1)
+                },
                 modifier = Modifier.width(80.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
             ) {
