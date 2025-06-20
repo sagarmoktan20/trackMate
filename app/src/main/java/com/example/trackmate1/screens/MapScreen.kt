@@ -29,6 +29,12 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.Priority
 import com.google.firebase.firestore.FieldValue
+import androidx.compose.ui.graphics.Color
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+//import com.google.maps.android.compose.BitmapDescriptorFactory
+
+// Add a data class for shared location info
+data class SharedLocationInfo(val position: LatLng, val workingStatus: String)
 
 @SuppressLint("UnsafeOptInUsageError")
 @Composable
@@ -47,8 +53,8 @@ fun MapScreen() {
         isMyLocationEnabled = hasPermission
     )
 
-    // State for shared locations
-    var sharedLocations by remember { mutableStateOf(mapOf<String, LatLng>()) }
+    // State for shared locations (now includes working status)
+    var sharedLocations by remember { mutableStateOf(mapOf<String, SharedLocationInfo>()) }
     var locationListener: ListenerRegistration? by remember { mutableStateOf(null) }
 
     // Initialize FusedLocationProviderClient
@@ -129,10 +135,10 @@ fun MapScreen() {
                     snapshot?.documents?.forEach { document ->
                         val latitude = document.getDouble("latitude")
                         val longitude = document.getDouble("longitude")
+                        val workingStatus = document.getString("working_status") ?: "Free"
                         if (latitude != null && longitude != null) {
-                            sharedLocations = sharedLocations + (document.id to LatLng(latitude, longitude))
-                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude")
-
+                            sharedLocations = sharedLocations + (document.id to SharedLocationInfo(LatLng(latitude, longitude), workingStatus))
+                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus")
                         }
                     }
                 }
@@ -153,17 +159,19 @@ fun MapScreen() {
         properties = mapProperties
     ) {
         // Add markers for shared locations
-        sharedLocations.forEach { (email, location) ->
-            //android.util.Log.d("SharedLocation", "Email: $email, Location: ${location.latitude}, ${location.longitude}")
+        sharedLocations.forEach { (email, info) ->
+            val color = when (info.workingStatus) {
+                "Busy" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+                "Free" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+                "En-route" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
+                else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
+            }
             Marker(
-
-                state = rememberMarkerState(position = location),
+                state = rememberMarkerState(position = info.position),
                 title = email,
-
-                snippet = "Shared Location"
-
+                snippet = "Shared Location",
+                icon = color
             )
-
         }
     }
 }

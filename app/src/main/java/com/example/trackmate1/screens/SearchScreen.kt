@@ -54,9 +54,12 @@ import com.google.firebase.firestore.FieldValue
 fun SearchScreen() {
     var searchText by remember { mutableStateOf("") }
     val invitationList = remember { mutableStateListOf<String>() } // placeholder list
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         getInvites(invitationList)
+        startAutoLocationSharing(context)
+        startAutoWorkingStatusListeners()
     }
 
     Column(modifier = Modifier
@@ -101,7 +104,6 @@ fun SearchScreen() {
         Spacer(modifier = Modifier.height(8.dp))
 
         // 📋 List of Invitations
-        val context = LocalContext.current
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(invitationList) { email ->
                 InvitationItem(email = email,context = context)
@@ -188,62 +190,77 @@ fun InvitationItem(email: String,context: Context) {
                         .document(email)
                         .update("invite_status", 1)
                         .addOnSuccessListener {
-                            // After successful status update, create shared_locations document in sender's collection
-                            val sharedLocationData = hashMapOf(
-                                "status" to "active",
-                                "shared_by" to myEmail,
-                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                            )
-                            
-                            // Create the shared_locations document in the sender's collection
+                            // Get current working status
                             firestoreDb.collection("users")
-                                .document(email)  // This is the sender's document
-                                .collection("shared_locations")
-                                .document(myEmail)  // This is the receiver's email
-                                .set(sharedLocationData)
-                                .addOnSuccessListener {
-                                    Log.d("Firestore", "Successfully created shared_locations document")
+                                .document(myEmail)
+                                .get()
+                                .addOnSuccessListener { userDocument ->
+                                    val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
                                     
-                                    // Now start sharing location updates
-                                    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+                                    // After successful status update, create shared_locations document in sender's collection
+                                    val sharedLocationData = hashMapOf(
+                                        "status" to "active",
+                                        "shared_by" to myEmail,
+                                        "working_status" to currentWorkingStatus,
+                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                    )
                                     
-                                    try {
-                                        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
-                                            .setWaitForAccurateLocation(false)
-                                            .setMinUpdateIntervalMillis(5000)
-                                            .setMaxUpdateDelayMillis(10000)
-                                            .build()
+                                    // Create the shared_locations document in the sender's collection
+                                    firestoreDb.collection("users")
+                                        .document(email)  // This is the sender's document
+                                        .collection("shared_locations")
+                                        .document(myEmail)  // This is the receiver's email
+                                        .set(sharedLocationData)
+                                        .addOnSuccessListener {
+                                            Log.d("Firestore", "Successfully created shared_locations document with working status")
+                                            
+                                            // Set up global working status listener for this user
+                                            setupWorkingStatusListener(myEmail, email)
+                                            
+                                            // Now start sharing location updates
+                                            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+                                            
+                                            try {
+                                                val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
+                                                    .setWaitForAccurateLocation(false)
+                                                    .setMinUpdateIntervalMillis(5000)
+                                                    .setMaxUpdateDelayMillis(10000)
+                                                    .build()
 
-                                        val locationCallback = object : LocationCallback() {
-                                            override fun onLocationResult(locationResult: LocationResult) {
-                                                locationResult.lastLocation?.let { location ->
-                                                    // Update the shared_locations document with new coordinates
-                                                    firestoreDb.collection("users")
-                                                        .document(email)  // Sender's document
-                                                        .collection("shared_locations")
-                                                        .document(myEmail)  // Receiver's email
-                                                        .update(
-                                                            mapOf(
-                                                                "latitude" to location.latitude,
-                                                                "longitude" to location.longitude,
-                                                                "timestamp" to FieldValue.serverTimestamp()
-                                                            )
-                                                        )
+                                                val locationCallback = object : LocationCallback() {
+                                                    override fun onLocationResult(locationResult: LocationResult) {
+                                                        locationResult.lastLocation?.let { location ->
+                                                            // Update the shared_locations document with new coordinates
+                                                            firestoreDb.collection("users")
+                                                                .document(email)  // Sender's document
+                                                                .collection("shared_locations")
+                                                                .document(myEmail)  // Receiver's email
+                                                                .update(
+                                                                    mapOf(
+                                                                        "latitude" to location.latitude,
+                                                                        "longitude" to location.longitude,
+                                                                        "timestamp" to FieldValue.serverTimestamp()
+                                                                    )
+                                                                )
+                                                        }
+                                                    }
                                                 }
+
+                                                fusedLocationClient.requestLocationUpdates(
+                                                    locationRequest,
+                                                    locationCallback,
+                                                    null
+                                                )
+                                            } catch (e: SecurityException) {
+                                                Log.e("SearchScreen", "Error requesting location updates", e)
                                             }
                                         }
-
-                                        fusedLocationClient.requestLocationUpdates(
-                                            locationRequest,
-                                            locationCallback,
-                                            null
-                                        )
-                                    } catch (e: SecurityException) {
-                                        Log.e("SearchScreen", "Error requesting location updates", e)
-                                    }
+                                        .addOnFailureListener { e ->
+                                            Log.e("Firestore", "Error creating shared_locations document", e)
+                                        }
                                 }
                                 .addOnFailureListener { e ->
-                                    Log.e("Firestore", "Error creating shared_locations document", e)
+                                    Log.e("Firestore", "Error getting user document for working status", e)
                                 }
                         }
                 },
@@ -282,6 +299,114 @@ fun InvitationItem(email: String,context: Context) {
             )
         }
     }
+}
+
+// Global working status listener to update all shared_locations documents
+private fun setupWorkingStatusListener(userEmail: String, sharedWithEmail: String) {
+    val firestoreDb = Firebase.firestore
+    
+    // Listen for working status changes in the user's profile
+    firestoreDb.collection("users")
+        .document(userEmail)
+        .addSnapshotListener { snapshot, e ->
+            if (e != null) {
+                Log.e("Firestore101", "Error listening for working status changes", e)
+                return@addSnapshotListener
+            }
+
+            snapshot?.let { doc ->
+                val newWorkingStatus = doc.getString("workingStatus") ?: "Free"
+                
+                // Update the working status in all shared_locations documents where this user is sharing
+                firestoreDb.collection("users")
+                    .document(sharedWithEmail)  // The user who is receiving the shared location
+                    .collection("shared_locations")
+                    .document(userEmail)  // The user who is sharing their location
+                    .update("working_status", newWorkingStatus)
+                    .addOnSuccessListener {
+                        Log.d("Firestore", "Updated working status to: $newWorkingStatus for user: $userEmail")
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("Firestore", "Error updating working status", e)
+                    }
+            }
+        }
+}
+
+fun startAutoLocationSharing(context: Context) {
+    val firestoreDb = Firebase.firestore
+    val myEmail = FirebaseAuth.getInstance().currentUser?.email ?: return
+    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+
+    firestoreDb.collection("users")
+        .document(myEmail)
+        .collection("invites")
+        .whereEqualTo("invite_status", 1)
+        .get()
+        .addOnSuccessListener { invitesSnapshot ->
+            for (inviteDoc in invitesSnapshot) {
+                val senderEmail = inviteDoc.id
+                // Check if shared_locations doc exists and is active
+                firestoreDb.collection("users")
+                    .document(senderEmail)
+                    .collection("shared_locations")
+                    .document(myEmail)
+                    .get()
+                    .addOnSuccessListener { sharedLocDoc ->
+                        if (sharedLocDoc.exists() && sharedLocDoc.getString("status") == "active") {
+                            // Start location sharing for this sender
+                            try {
+                                val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
+                                    .setWaitForAccurateLocation(false)
+                                    .setMinUpdateIntervalMillis(5000)
+                                    .setMaxUpdateDelayMillis(10000)
+                                    .build()
+
+                                val locationCallback = object : LocationCallback() {
+                                    override fun onLocationResult(locationResult: LocationResult) {
+                                        locationResult.lastLocation?.let { location ->
+                                            firestoreDb.collection("users")
+                                                .document(senderEmail)
+                                                .collection("shared_locations")
+                                                .document(myEmail)
+                                                .update(
+                                                    mapOf(
+                                                        "latitude" to location.latitude,
+                                                        "longitude" to location.longitude,
+                                                        "timestamp" to FieldValue.serverTimestamp()
+                                                    )
+                                                )
+                                        }
+                                    }
+                                }
+                                fusedLocationClient.requestLocationUpdates(
+                                    locationRequest,
+                                    locationCallback,
+                                    null
+                                )
+                            } catch (e: SecurityException) {
+                                Log.e("AutoLocationShare", "Error requesting location updates", e)
+                            }
+                        }
+                    }
+            }
+        }
+}
+
+fun startAutoWorkingStatusListeners() {
+    val firestoreDb = Firebase.firestore
+    val myEmail = FirebaseAuth.getInstance().currentUser?.email ?: return
+    firestoreDb.collection("users")
+        .document(myEmail)
+        .collection("invites")
+        .whereEqualTo("invite_status", 1)
+        .get()
+        .addOnSuccessListener { invitesSnapshot ->
+            for (inviteDoc in invitesSnapshot) {
+                val senderEmail = inviteDoc.id
+                setupWorkingStatusListener(myEmail, senderEmail)
+            }
+        }
 }
 
 @Preview(showBackground = true)

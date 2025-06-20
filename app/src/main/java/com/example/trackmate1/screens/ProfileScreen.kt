@@ -30,14 +30,19 @@ data class UserProfile(
     val name: String = "",
     val email: String = "",
     val phone: String = "",
-    val imageUrl: String = ""
+    val imageUrl: String = "",
+    val workingStatus: String = "Free"
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavHostController) {
     val context = LocalContext.current
     var userProfile by remember { mutableStateOf(UserProfile()) }
     var isLoading by remember { mutableStateOf(true) }
+    var expanded by remember { mutableStateOf(false) }
+    val workingStatusOptions = listOf("Free", "Busy", "En-route")
+
 
     LaunchedEffect(Unit) {
         val currentUser = FirebaseAuth.getInstance().currentUser
@@ -51,8 +56,28 @@ fun ProfileScreen(navController: NavHostController) {
                             name = document.getString("Name") ?: "",
                             email = document.getString("email") ?: "",
                             phone = document.getString("phone") ?: "",
-                            imageUrl = document.getString("imageUrl") ?: ""
+                            imageUrl = document.getString("imageUrl") ?: "",
+                            workingStatus = document.getString("workingStatus") ?: "Free"
                         )
+                    } else {
+                        // If document doesn't exist, create it with default values
+                        val defaultProfile = UserProfile(
+                            name = currentUser.displayName ?: "",
+                            email = currentUser.email ?: "",
+                            workingStatus = "Free"
+                        )
+                        Firebase.firestore.collection("users")
+                            .document(currentUser.email.toString())
+                            .set(defaultProfile)
+                            .addOnSuccessListener {
+                                userProfile = defaultProfile
+                                isLoading = false
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(context, "Error creating profile", Toast.LENGTH_SHORT).show()
+                                isLoading = false
+                            }
+                        return@addOnSuccessListener
                     }
                     isLoading = false
                 }
@@ -107,6 +132,61 @@ fun ProfileScreen(navController: NavHostController) {
                         fontSize = 16.sp,
                         color = Color.Gray
                     )
+                }
+
+                // Working Status Dropdown
+                Text(
+                    text = "Working Status:",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.Black
+                )
+                
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = it },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TextField(
+                        value = userProfile.workingStatus,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                        colors = ExposedDropdownMenuDefaults.textFieldColors()
+                    )
+                    
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        workingStatusOptions.forEach { status ->
+                            DropdownMenuItem(
+                                text = { Text(status) },
+                                onClick = {
+                                    val currentUser = FirebaseAuth.getInstance().currentUser
+                                    if (currentUser != null) {
+                                        // Update local state
+                                        userProfile = userProfile.copy(workingStatus = status)
+                                        
+                                        // Update Firebase
+                                        Firebase.firestore.collection("users")
+                                            .document(currentUser.email.toString())
+                                            .update("workingStatus", status)
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "Status updated to $status", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .addOnFailureListener {
+                                                Toast.makeText(context, "Failed to update status", Toast.LENGTH_SHORT).show()
+                                            }
+                                    }
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
