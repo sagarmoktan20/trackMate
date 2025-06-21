@@ -31,10 +31,26 @@ import com.google.android.gms.location.Priority
 import com.google.firebase.firestore.FieldValue
 import androidx.compose.ui.graphics.Color
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.Button
+import androidx.compose.foundation.Image
+import androidx.compose.ui.window.Dialog
+import coil.compose.rememberAsyncImagePainter
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 //import com.google.maps.android.compose.BitmapDescriptorFactory
 
 // Add a data class for shared location info
-data class SharedLocationInfo(val position: LatLng, val workingStatus: String)
+data class SharedLocationInfo(
+    val position: LatLng, 
+    val workingStatus: String,
+    val receiverName: String,
+    val receiverImageUrl: String
+)
 
 @SuppressLint("UnsafeOptInUsageError")
 @Composable
@@ -72,7 +88,7 @@ fun MapScreen() {
                     if (currentUser != null) {
                         Firebase.firestore.collection("users")
                             .document(currentUser)
-                            .collection("shared_locations")
+                            .collection("shared_locations") 
                             .whereEqualTo("status", "active")
                             .get()
                             .addOnSuccessListener { documents ->
@@ -136,9 +152,16 @@ fun MapScreen() {
                         val latitude = document.getDouble("latitude")
                         val longitude = document.getDouble("longitude")
                         val workingStatus = document.getString("working_status") ?: "Free"
+                        val receiverName = document.getString("receiver_name") ?: ""
+                        val receiverImageUrl = document.getString("receiver_imageUrl") ?: ""
                         if (latitude != null && longitude != null) {
-                            sharedLocations = sharedLocations + (document.id to SharedLocationInfo(LatLng(latitude, longitude), workingStatus))
-                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus")
+                            sharedLocations = sharedLocations + (document.id to SharedLocationInfo(
+                                LatLng(latitude, longitude), 
+                                workingStatus, 
+                                receiverName, 
+                                receiverImageUrl
+                            ))
+                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus, Name: $receiverName")
                         }
                     }
                 }
@@ -152,6 +175,9 @@ fun MapScreen() {
             fusedLocationClient.removeLocationUpdates(locationCallback)
         }
     }
+
+    // State for selected marker
+    var selectedLocation by remember { mutableStateOf<SharedLocationInfo?>(null) }
 
     GoogleMap(
         modifier = Modifier.fillMaxSize(),
@@ -168,10 +194,49 @@ fun MapScreen() {
             }
             Marker(
                 state = rememberMarkerState(position = info.position),
-                title = email,
-                snippet = "Shared Location",
-                icon = color
+                title = if (info.receiverName.isNotEmpty()) info.receiverName else email,
+                snippet = "Status: ${info.workingStatus}",
+                icon = color,
+                onClick = {
+                    selectedLocation = info
+                    false // Let the map handle default behavior (optional)
+                }
             )
+        }
+    }
+
+    // Custom info window dialog
+    selectedLocation?.let { info ->
+        Dialog(onDismissRequest = { selectedLocation = null }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (info.receiverImageUrl.isNotEmpty()) {
+                        Image(
+                            painter = rememberAsyncImagePainter(info.receiverImageUrl),
+                            contentDescription = "Profile Image",
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    Text(text = info.receiverName, modifier = Modifier.padding(bottom = 8.dp))
+                    Text(text = "Status: ${info.workingStatus}")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { selectedLocation = null }) {
+                        Text("Close")
+                    }
+                }
+            }
         }
     }
 }

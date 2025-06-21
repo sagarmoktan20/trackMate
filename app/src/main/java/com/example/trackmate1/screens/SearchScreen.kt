@@ -190,18 +190,22 @@ fun InvitationItem(email: String,context: Context) {
                         .document(email)
                         .update("invite_status", 1)
                         .addOnSuccessListener {
-                            // Get current working status
+                            // Get current working status, name, and imageUrl of the receiver
                             firestoreDb.collection("users")
                                 .document(myEmail)
                                 .get()
                                 .addOnSuccessListener { userDocument ->
                                     val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
+                                    val receiverName = userDocument.getString("Name") ?: ""
+                                    val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
                                     
                                     // After successful status update, create shared_locations document in sender's collection
                                     val sharedLocationData = hashMapOf(
                                         "status" to "active",
                                         "shared_by" to myEmail,
                                         "working_status" to currentWorkingStatus,
+                                        "receiver_name" to receiverName,
+                                        "receiver_imageUrl" to receiverImageUrl,
                                         "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                                     )
                                     
@@ -212,7 +216,7 @@ fun InvitationItem(email: String,context: Context) {
                                         .document(myEmail)  // This is the receiver's email
                                         .set(sharedLocationData)
                                         .addOnSuccessListener {
-                                            Log.d("Firestore", "Successfully created shared_locations document with working status")
+                                            Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
                                             
                                             // Set up global working status listener for this user
                                             setupWorkingStatusListener(myEmail, email)
