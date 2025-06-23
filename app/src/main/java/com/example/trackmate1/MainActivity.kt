@@ -117,9 +117,51 @@ class MainActivity : ComponentActivity() {
                         firestoreDb.collection("users")
                             .document(Myemail).update(locationData)
 
+                        // 1. Update sender's shared_locations with my (receiver's) coordinates for each accepted invite
+                        firestoreDb.collection("users")
+                            .document(Myemail)
+                            .collection("invites")
+                            .whereEqualTo("invite_status", 1)
+                            .get()
+                            .addOnSuccessListener { invitesSnapshot ->
+                                for (inviteDoc in invitesSnapshot) {
+                                    val senderEmail = inviteDoc.id
+                                    val sharedLocationData = mapOf(
+                                        "latitude" to location.latitude,
+                                        "longitude" to location.longitude,
+                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                        "online_status" to true
+                                    )
+                                    firestoreDb.collection("users")
+                                        .document(senderEmail)
+                                        .collection("shared_locations")
+                                        .document(Myemail)
+                                        .update(sharedLocationData)
+                                }
+                            }
 
-
-                        firestoreDb.collection("users").document(Myemail).collection("invites")
+                        // 2. Update my shared_locations in the view of users I sent an invite to and they accepted (status == 'active')
+                        firestoreDb.collection("users")
+                            .document(Myemail)
+                            .collection("shared_locations")
+                            .whereEqualTo("status", "active")
+                            .get()
+                            .addOnSuccessListener { sharedLocSnapshot ->
+                                for (sharedLocDoc in sharedLocSnapshot) {
+                                    val receiverEmail = sharedLocDoc.id
+                                    val sharedLocationData = mapOf(
+                                        "latitude" to location.latitude,
+                                        "longitude" to location.longitude,
+                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                        "online_status" to true
+                                    )
+                                    firestoreDb.collection("users")
+                                        .document(receiverEmail)
+                                        .collection("shared_locations")
+                                        .document(Myemail)
+                                        .update(sharedLocationData)
+                                }
+                            }
 
 
 

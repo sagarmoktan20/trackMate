@@ -49,7 +49,8 @@ data class SharedLocationInfo(
     val position: LatLng, 
     val workingStatus: String,
     val receiverName: String,
-    val receiverImageUrl: String
+    val receiverImageUrl: String,
+    val onlineStatus: Boolean
 )
 
 @SuppressLint("UnsafeOptInUsageError")
@@ -73,67 +74,6 @@ fun MapScreen() {
     var sharedLocations by remember { mutableStateOf(mapOf<String, SharedLocationInfo>()) }
     var locationListener: ListenerRegistration? by remember { mutableStateOf(null) }
 
-    // Initialize FusedLocationProviderClient
-    val fusedLocationClient = remember {
-        LocationServices.getFusedLocationProviderClient(context)
-    }
-
-    // Location callback for updating location
-    val locationCallback = remember {
-        object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult) {
-                locationResult.lastLocation?.let { location ->
-                    // Update location in Firestore for active shared locations
-                    val currentUser = FirebaseAuth.getInstance().currentUser?.email
-                    if (currentUser != null) {
-                        Firebase.firestore.collection("users")
-                            .document(currentUser)
-                            .collection("shared_locations") 
-                            .whereEqualTo("status", "active")
-                            .get()
-                            .addOnSuccessListener { documents ->
-                                for (document in documents) {
-                                    // Update the location in the shared_locations document
-                                    Firebase.firestore.collection("users")
-                                        .document(currentUser)
-                                        .collection("shared_locations")
-                                        .document(document.id)
-                                        .update(
-                                            mapOf(
-                                                "latitude" to location.latitude,
-                                                "longitude" to location.longitude,
-                                                "timestamp" to FieldValue.serverTimestamp()
-                                            )
-                                        )
-                                }
-                            }
-                    }
-                }
-            }
-        }
-    }
-
-    // Start location updates when permission is granted
-    LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
-                .setWaitForAccurateLocation(false)
-                .setMinUpdateIntervalMillis(5000)
-                .setMaxUpdateDelayMillis(10000)
-                .build()
-
-            try {
-                fusedLocationClient.requestLocationUpdates(
-                    locationRequest,
-                    locationCallback,
-                    null
-                )
-            } catch (e: SecurityException) {
-                android.util.Log.e("MapScreen", "Error requesting location updates", e)
-            }
-        }
-    }
-
     // Listen for shared locations
     LaunchedEffect(Unit) {
         val currentUser = FirebaseAuth.getInstance().currentUser?.email
@@ -154,14 +94,16 @@ fun MapScreen() {
                         val workingStatus = document.getString("working_status") ?: "Free"
                         val receiverName = document.getString("receiver_name") ?: ""
                         val receiverImageUrl = document.getString("receiver_imageUrl") ?: ""
+                        val onlineStatus = document.getBoolean("online_status") ?: false
                         if (latitude != null && longitude != null) {
                             sharedLocations = sharedLocations + (document.id to SharedLocationInfo(
                                 LatLng(latitude, longitude), 
                                 workingStatus, 
                                 receiverName, 
-                                receiverImageUrl
+                                receiverImageUrl,
+                                onlineStatus
                             ))
-                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus, Name: $receiverName")
+                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus, Name: $receiverName, Online: $onlineStatus")
                         }
                     }
                 }
@@ -172,7 +114,6 @@ fun MapScreen() {
     DisposableEffect(Unit) {
         onDispose {
             locationListener?.remove()
-            fusedLocationClient.removeLocationUpdates(locationCallback)
         }
     }
 
@@ -192,10 +133,12 @@ fun MapScreen() {
                 "En-route" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
                 else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
             }
+            val onlineStatusEmoji = if (info.onlineStatus) "🟢" else "🔴"
+            val onlineStatusText = if (info.onlineStatus) "Online" else "Offline"
             Marker(
                 state = rememberMarkerState(position = info.position),
-                title = if (info.receiverName.isNotEmpty()) info.receiverName else email,
-                snippet = "Status: ${info.workingStatus}",
+                title = if (info.receiverName.isNotEmpty()) "${info.receiverName} ($onlineStatusEmoji $onlineStatusText)" else "$email ($onlineStatusEmoji $onlineStatusText)",
+                snippet = "Status: ${info.workingStatus}\nOnline: $onlineStatusText",
                 icon = color,
                 onClick = {
                     selectedLocation = info
@@ -231,6 +174,12 @@ fun MapScreen() {
                     }
                     Text(text = info.receiverName, modifier = Modifier.padding(bottom = 8.dp))
                     Text(text = "Status: ${info.workingStatus}")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (info.onlineStatus) "Online" else "Offline",
+                        color = if (info.onlineStatus) Color.Green else Color.Red,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = { selectedLocation = null }) {
                         Text("Close")
