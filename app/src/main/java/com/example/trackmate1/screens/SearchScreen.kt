@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -55,16 +57,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import java.util.Date
 
+// Data class for invitation
+data class InvitationData(val email: String, val imageUrl: String)
 
 @Composable
 fun SearchScreen() {
     var searchText by remember { mutableStateOf("") }
-    val invitationList = remember { mutableStateListOf<String>() } // placeholder list
+    val invitationList = remember { mutableStateListOf<InvitationData>() } // now holds email and imageUrl
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         getInvites(invitationList)
-        startAutoLocationSharing(context)
         startAutoWorkingStatusListeners()
         startOnlineStatusMonitor()
     }
@@ -88,12 +91,15 @@ fun SearchScreen() {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(onClick = {
-
-                sendInvite(searchText)
-//                if (searchText.isNotBlank()) {
-//                    invitationList.add(searchText)
-//                    searchText = ""
-//                }
+                // Email validation logic
+                val trimmedEmail = searchText.trim()
+                if (trimmedEmail.isBlank()) {
+                    android.widget.Toast.makeText(context, "Please enter an email address.", android.widget.Toast.LENGTH_SHORT).show()
+                } else if (!android.util.Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
+                    android.widget.Toast.makeText(context, "Please enter a valid email address.", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    sendInvite(trimmedEmail)
+                }
             },colors = ButtonDefaults.buttonColors(containerColor = Color.Green)) {
                 Text("Send")
             }
@@ -112,8 +118,8 @@ fun SearchScreen() {
 
         // 📋 List of Invitations
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(invitationList) { email ->
-                InvitationItem(email = email,context = context)
+            items(invitationList) { invitation ->
+                InvitationItem(email = invitation.email, imageUrl = invitation.imageUrl, context = context)
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
@@ -121,7 +127,7 @@ fun SearchScreen() {
 }
 var inviteListener: ListenerRegistration? = null
 
-fun getInvites(invitationList: SnapshotStateList<String>) {
+fun getInvites(invitationList: SnapshotStateList<InvitationData>) {
     val firestoreDb = Firebase.firestore
     inviteListener?.remove() // Remove previous listener if any to prevent leaks
 
@@ -136,42 +142,40 @@ fun getInvites(invitationList: SnapshotStateList<String>) {
                Log.d("firestore", "Current data: ${snapshot.documents}")
                for (item in snapshot) {
                    if (item.get("invite_status") == 0L) {
-                       invitationList.add(item.id)
+                       val imageUrl = item.getString("sender_imageUrl") ?: ""
+                       invitationList.add(InvitationData(item.id, imageUrl))
                    }
                }
            }
        }
-
-
-
-//        .get().addOnCompleteListener() {
-//            if(it.isSuccessful) {
-//
-//                for(item in it.result){
-//                    if(item.get("invite_status") == 0L){
-//                   invitationList.add(item.id)
-//                    }
-//                }
-//            }
-//
-//
-//        }
 }
 
 fun sendInvite(searchText: String) {
- val mailFromSearchBar = searchText;
+    val mailFromSearchBar = searchText
     val firestoreDb = Firebase.firestore
-    val data = hashMapOf(
-        "invite_status" to 0
-    )
-    val myMail = FirebaseAuth.getInstance().currentUser?.email.toString();
+    val myMail = FirebaseAuth.getInstance().currentUser?.email.toString()
+    // Fetch sender's profile imageUrl and name from Firestore
     firestoreDb.collection("users")
-        .document(mailFromSearchBar).collection("invites")
-        .document(myMail).set(data).addOnSuccessListener {}.addOnFailureListener {}
+        .document(myMail)
+        .get()
+        .addOnSuccessListener { document ->
+            val senderImageUrl = document.getString("imageUrl") ?: ""
+            val senderName = document.getString("Name") ?: ""
+            val data = hashMapOf(
+                "invite_status" to 0,
+                "sender_imageUrl" to senderImageUrl,
+                "sender_name" to senderName
+            )
+            firestoreDb.collection("users")
+                .document(mailFromSearchBar).collection("invites")
+                .document(myMail).set(data)
+                .addOnSuccessListener {}
+                .addOnFailureListener {}
+        }
 }
 
 @Composable
-fun InvitationItem(email: String,context: Context) {
+fun InvitationItem(email: String, imageUrl: String, context: Context) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -184,12 +188,29 @@ fun InvitationItem(email: String,context: Context) {
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Accept Button
+            // Image (left, circular, larger)
+            if (imageUrl.isNotEmpty()) {
+                androidx.compose.foundation.Image(
+                    painter = coil.compose.rememberAsyncImagePainter(imageUrl),
+                    contentDescription = "Sender Image",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .padding(end = 8.dp)
+                )
+            }
+            // Email (right of image)
+            Text(
+                text = email,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Black
+            )
+            // Accept Button (right)
             Button(
                 onClick = {
                     val firestoreDb = Firebase.firestore
                     val myEmail = FirebaseAuth.getInstance().currentUser?.email.toString()
-                    
                     // First update the invite status
                     firestoreDb.collection("users")
                         .document(myEmail)
@@ -205,7 +226,7 @@ fun InvitationItem(email: String,context: Context) {
                                     val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
                                     val receiverName = userDocument.getString("Name") ?: ""
                                     val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
-                                    
+                                    val receiverPhone = userDocument.getString("phone")
                                     // After successful status update, create shared_locations document in sender's collection
                                     val sharedLocationData = hashMapOf(
                                         "status" to "active",
@@ -216,7 +237,9 @@ fun InvitationItem(email: String,context: Context) {
                                         "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
                                         "online_status" to true // Set online_status to true initially
                                     )
-                                    
+                                    if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
+                                        sharedLocationData["receiver_phone"] = receiverPhone
+                                    }
                                     // Create the shared_locations document in the sender's collection
                                     firestoreDb.collection("users")
                                         .document(email)  // This is the sender's document
@@ -224,30 +247,27 @@ fun InvitationItem(email: String,context: Context) {
                                         .document(myEmail)  // This is the receiver's email
                                         .set(sharedLocationData)
                                         .addOnSuccessListener {
-                                            Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
-                                            
+                                            android.util.Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
                                             // Set up global working status listener for this user
                                             setupWorkingStatusListener(myEmail, email)
                                             // No need to start FusedLocationProviderClient here; MainActivity handles location updates
                                         }
                                         .addOnFailureListener { e ->
-                                            Log.e("Firestore", "Error creating shared_locations document", e)
+                                            android.util.Log.e("Firestore", "Error creating shared_locations document", e)
                                         }
                                 }
                                 .addOnFailureListener { e ->
-                                    Log.e("Firestore", "Error getting user document for working status", e)
+                                    android.util.Log.e("Firestore", "Error getting user document for working status", e)
                                 }
                         }
                 },
                 modifier = Modifier.width(80.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Green)
             ) {
-                Text("Accept")
+                Text("Accept", fontSize = 12.sp)
             }
-
             Spacer(modifier = Modifier.width(8.dp))
-
-            // Reject Button
+            // Reject Button (right)
             Button(
                 onClick = { 
                     val firestoreDb = Firebase.firestore
@@ -260,18 +280,8 @@ fun InvitationItem(email: String,context: Context) {
                 modifier = Modifier.width(80.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
             ) {
-                Text("Reject")
+                Text("Reject", fontSize = 12.sp)
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Email Placeholder
-            Text(
-                text = email,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.Black
-            )
         }
     }
 }
@@ -304,63 +314,6 @@ private fun setupWorkingStatusListener(userEmail: String, sharedWithEmail: Strin
                     .addOnFailureListener { e ->
                         Log.e("Firestore", "Error updating working status", e)
                     }
-            }
-        }
-}
-
-fun updateSharedLocation(sharerEmail: String, viewerEmail: String) {
-    val firestoreDb = Firebase.firestore
-    firestoreDb.collection("users")
-        .document(sharerEmail)
-        .get()
-        .addOnSuccessListener { sharerDoc ->
-            val latitude = sharerDoc.getDouble("latitude")
-            val longitude = sharerDoc.getDouble("longitude")
-            if (latitude != null && longitude != null) {
-                firestoreDb.collection("users")
-                    .document(viewerEmail)
-                    .collection("shared_locations")
-                    .document(sharerEmail)
-                    .update(
-                        mapOf(
-                            "latitude" to latitude,
-                            "longitude" to longitude,
-                            "timestamp" to FieldValue.serverTimestamp()
-                        )
-                    )
-            }
-        }
-}
-
-fun startAutoLocationSharing(context: Context) {
-    val firestoreDb = Firebase.firestore
-    val myEmail = FirebaseAuth.getInstance().currentUser?.email ?: return
-    Log.d("myemail", "startAutoLocationSharing: $myEmail")
-    firestoreDb.collection("users")
-        .document(myEmail)
-        .collection("invites")
-        .whereEqualTo("invite_status", 1)
-        .get()
-        .addOnSuccessListener { invitesSnapshot ->
-            for (inviteDoc in invitesSnapshot) {
-                val senderEmail = inviteDoc.id
-                // Update sender's shared_locations with my (receiver's) coordinates
-                updateSharedLocation(myEmail, senderEmail)
-            }
-        }
-    // Also check if this user has sent invites that were accepted (two-way)
-    firestoreDb.collection("users")
-        .document(myEmail)
-        .collection("shared_locations")
-        .get()
-        .addOnSuccessListener { sharedLocSnapshot ->
-            for (sharedLocDoc in sharedLocSnapshot) {
-                val receiverEmail = sharedLocDoc.id
-                // If the receiver has accepted (status == active), update my shared_locations in their view
-                val status = sharedLocDoc.getString("status")
-                if (status == "active") {
-                    updateSharedLocation(receiverEmail, myEmail)
-                }
             }
         }
 }

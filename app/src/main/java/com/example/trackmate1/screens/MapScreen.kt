@@ -42,6 +42,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material3.Icon
+import android.content.Intent
+import android.net.Uri
 //import com.google.maps.android.compose.BitmapDescriptorFactory
 
 // Add a data class for shared location info
@@ -50,7 +55,8 @@ data class SharedLocationInfo(
     val workingStatus: String,
     val receiverName: String,
     val receiverImageUrl: String,
-    val onlineStatus: Boolean
+    val onlineStatus: Boolean,
+    val receiverPhoneNum: String? = null
 )
 
 @SuppressLint("UnsafeOptInUsageError")
@@ -95,15 +101,17 @@ fun MapScreen() {
                         val receiverName = document.getString("receiver_name") ?: ""
                         val receiverImageUrl = document.getString("receiver_imageUrl") ?: ""
                         val onlineStatus = document.getBoolean("online_status") ?: false
+                        val receiverPhoneNum = document.getString("receiver_phone")
                         if (latitude != null && longitude != null) {
                             sharedLocations = sharedLocations + (document.id to SharedLocationInfo(
                                 LatLng(latitude, longitude), 
                                 workingStatus, 
                                 receiverName, 
                                 receiverImageUrl,
-                                onlineStatus
+                                onlineStatus,
+                                receiverPhoneNum
                             ))
-                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus, Name: $receiverName, Online: $onlineStatus")
+                            Log.d("SharedLocation", "email: ${document.id}, Location: $latitude, $longitude, Status: $workingStatus, Name: $receiverName, Phone: $receiverPhoneNum, Online: $onlineStatus")
                         }
                     }
                 }
@@ -180,6 +188,20 @@ fun MapScreen() {
                         color = if (info.onlineStatus) Color.Green else Color.Red,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
+                    // Call button if phone number is available
+                    if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
+                        Button(onClick = {
+                            val intent = Intent(Intent.ACTION_DIAL).apply {
+                                data = Uri.parse("tel:${info.receiverPhoneNum}")
+                            }
+                            context.startActivity(intent)
+                        }) {
+                            Icon(Icons.Default.Call, contentDescription = "Call")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Call")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = { selectedLocation = null }) {
                         Text("Close")
