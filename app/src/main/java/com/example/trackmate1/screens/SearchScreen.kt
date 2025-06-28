@@ -218,46 +218,108 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                         .document(email)
                         .update("invite_status", 1)
                         .addOnSuccessListener {
-                            // Get current working status, name, and imageUrl of the receiver
+                            // Check if sender is admin
                             firestoreDb.collection("users")
-                                .document(myEmail)
+                                .document(email)
                                 .get()
-                                .addOnSuccessListener { userDocument ->
-                                    val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
-                                    val receiverName = userDocument.getString("Name") ?: ""
-                                    val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
-                                    val receiverPhone = userDocument.getString("phone")
-                                    // After successful status update, create shared_locations document in sender's collection
-                                    val sharedLocationData = hashMapOf(
-                                        "status" to "active",
-                                        "shared_by" to myEmail,
-                                        "working_status" to currentWorkingStatus,
-                                        "receiver_name" to receiverName,
-                                        "receiver_imageUrl" to receiverImageUrl,
-                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                        "online_status" to true // Set online_status to true initially
-                                    )
-                                    if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
-                                        sharedLocationData["receiver_phone"] = receiverPhone
+                                .addOnSuccessListener { senderDoc ->
+                                    val isAdmin = senderDoc.getBoolean("isAdmin") ?: false
+                                    if (isAdmin) {
+                                        // Fetch all emails in sender's shared_locations
+                                        firestoreDb.collection("users")
+                                            .document(email)
+                                            .collection("shared_locations")
+                                            .get()
+                                            .addOnSuccessListener { followingSnapshot ->
+                                                val followedEmails = followingSnapshot.documents.map { it.id }.filter { it != myEmail }
+                                                android.util.Log.d("AdminAutoConnect", "Admin is following: $followedEmails")
+                                                // For each followed email, add the accepting user to their shared_locations
+                                                followedEmails.forEach { followedEmail ->
+                                                    // Fetch the details of the current user (myEmail)
+                                                    firestoreDb.collection("users")
+                                                        .document(myEmail)
+                                                        .get()
+                                                        .addOnSuccessListener { currentUserDoc ->
+                                                            val workingStatus = currentUserDoc.getString("workingStatus") ?: "Free"
+                                                            val receiverName = currentUserDoc.getString("Name") ?: ""
+                                                            val receiverImageUrl = currentUserDoc.getString("imageUrl") ?: ""
+                                                            val receiverPhone = currentUserDoc.getString("phone")
+                                                            val sharedLocationData = hashMapOf(
+                                                                "status" to "active",
+                                                                "shared_by" to email, // admin
+                                                                "connected_user" to myEmail,
+                                                                "working_status" to workingStatus,
+                                                                "receiver_name" to receiverName,
+                                                                "receiver_imageUrl" to receiverImageUrl,
+                                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                                "online_status" to true // Set online_status to true initially
+                                                            )
+                                                            if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
+                                                                sharedLocationData["receiver_phone"] = receiverPhone
+                                                            }
+                                                            firestoreDb.collection("users")
+                                                                .document(followedEmail)
+                                                                .collection("shared_locations")
+                                                                .document(myEmail)
+                                                                .set(sharedLocationData)
+                                                            // Also add an invite for the accepting user in the followed user's invites with invite_status = 1
+                                                            val inviteData = hashMapOf(
+                                                                "invite_status" to 1,
+                                                                "sender_imageUrl" to "",
+                                                                "sender_name" to ""
+                                                            )
+                                                            firestoreDb.collection("users")
+                                                                .document(myEmail)
+                                                                .collection("invites")
+                                                                .document(followedEmail)
+                                                                .set(inviteData)
+                                                            // Set up working status listener for the current user with this followed user
+                                                            setupWorkingStatusListener(myEmail, followedEmail)
+                                                        }
+                                                    }
+                                            }
                                     }
-                                    // Create the shared_locations document in the sender's collection
+                                    // Get current working status, name, and imageUrl of the receiver
                                     firestoreDb.collection("users")
-                                        .document(email)  // This is the sender's document
-                                        .collection("shared_locations")
-                                        .document(myEmail)  // This is the receiver's email
-                                        .set(sharedLocationData)
-                                        .addOnSuccessListener {
-                                            android.util.Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
-                                            // Set up global working status listener for this user
-                                            setupWorkingStatusListener(myEmail, email)
-                                            // No need to start FusedLocationProviderClient here; MainActivity handles location updates
+                                        .document(myEmail)
+                                        .get()
+                                        .addOnSuccessListener { userDocument ->
+                                            val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
+                                            val receiverName = userDocument.getString("Name") ?: ""
+                                            val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
+                                            val receiverPhone = userDocument.getString("phone")
+                                            // After successful status update, create shared_locations document in sender's collection
+                                            val sharedLocationData = hashMapOf(
+                                                "status" to "active",
+                                                "shared_by" to myEmail,
+                                                "working_status" to currentWorkingStatus,
+                                                "receiver_name" to receiverName,
+                                                "receiver_imageUrl" to receiverImageUrl,
+                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                "online_status" to true // Set online_status to true initially
+                                            )
+                                            if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
+                                                sharedLocationData["receiver_phone"] = receiverPhone
+                                            }
+                                            // Create the shared_locations document in the sender's collection
+                                            firestoreDb.collection("users")
+                                                .document(email)  // This is the sender's document
+                                                .collection("shared_locations")
+                                                .document(myEmail)  // This is the receiver's email
+                                                .set(sharedLocationData)
+                                                .addOnSuccessListener {
+                                                    android.util.Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
+                                                    // Set up global working status listener for this user
+                                                    setupWorkingStatusListener(myEmail, email)
+                                                    // No need to start FusedLocationProviderClient here; MainActivity handles location updates
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    android.util.Log.e("Firestore", "Error creating shared_locations document", e)
+                                                }
                                         }
                                         .addOnFailureListener { e ->
-                                            android.util.Log.e("Firestore", "Error creating shared_locations document", e)
+                                            android.util.Log.e("Firestore", "Error getting user document for working status", e)
                                         }
-                                }
-                                .addOnFailureListener { e ->
-                                    android.util.Log.e("Firestore", "Error getting user document for working status", e)
                                 }
                         }
                 },

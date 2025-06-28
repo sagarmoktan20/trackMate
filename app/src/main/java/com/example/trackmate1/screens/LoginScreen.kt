@@ -119,7 +119,14 @@ fun LoginScreen(navController:NavHostController){
                             .document(email)
                             .set(user)
                             .addOnSuccessListener { documentReference ->
-
+                                // Fetch admin email and set isAdmin field
+                                db.collection("users").document("Admin").get()
+                                    .addOnSuccessListener { adminDoc ->
+                                        val adminEmail = adminDoc.getString("email")
+                                        val isAdmin = (email == adminEmail)
+                                        db.collection("users").document(email)
+                                            .update("isAdmin", isAdmin)
+                                    }
                             }
                             .addOnFailureListener { e ->
                                 Log.w("fire1", "Error adding document", e)

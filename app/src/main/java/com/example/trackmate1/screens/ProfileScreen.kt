@@ -35,7 +35,8 @@ data class UserProfile(
     val email: String = "",
     val phone: String = "",
     val imageUrl: String = "",
-    val workingStatus: String = "Free"
+    val workingStatus: String = "Free",
+    val isAdmin: Boolean = false
 )
 
 // Data class for follower
@@ -100,14 +101,16 @@ fun ProfileScreen(navController: NavHostController) {
                             email = document.getString("email") ?: "",
                             phone = document.getString("phone") ?: "",
                             imageUrl = document.getString("imageUrl") ?: "",
-                            workingStatus = document.getString("workingStatus") ?: "Free"
+                            workingStatus = document.getString("workingStatus") ?: "Free",
+                            isAdmin = document.getBoolean("isAdmin") ?: false
                         )
                     } else {
                         // If document doesn't exist, create it with default values
                         val defaultProfile = UserProfile(
                             name = currentUser.displayName ?: "",
                             email = currentUser.email ?: "",
-                            workingStatus = "Free"
+                            workingStatus = "Free",
+                            isAdmin = false
                         )
                         Firebase.firestore.collection("users")
                             .document(currentUser.email.toString())
@@ -202,6 +205,15 @@ fun ProfileScreen(navController: NavHostController) {
                 color = Color.Gray,
                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
             )
+            if (userProfile.isAdmin) {
+                Text(
+                    text = "Admin",
+                    fontSize = 14.sp,
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                )
+            }
             // Instagram-like top row: Profile Pic + Follower/Following
             Row(
                 modifier = Modifier
