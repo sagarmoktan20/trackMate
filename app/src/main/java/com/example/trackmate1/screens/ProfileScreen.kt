@@ -330,7 +330,7 @@ fun ProfileScreen(navController: NavHostController) {
                     fontWeight = FontWeight.Medium,
                     color = Color.Black
                 )
-                
+
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = it },
@@ -346,7 +346,7 @@ fun ProfileScreen(navController: NavHostController) {
                             .menuAnchor(),
                         colors = ExposedDropdownMenuDefaults.textFieldColors()
                     )
-                    
+
                     ExposedDropdownMenu(
                         expanded = expanded,
                         onDismissRequest = { expanded = false }
@@ -359,7 +359,7 @@ fun ProfileScreen(navController: NavHostController) {
                                     if (currentUser != null) {
                                         // Update local state
                                         userProfile = userProfile.copy(workingStatus = status)
-                                        
+
                                         // Update Firebase
                                         Firebase.firestore.collection("users")
                                             .document(currentUser.email.toString())

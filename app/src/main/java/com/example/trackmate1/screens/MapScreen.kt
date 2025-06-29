@@ -51,7 +51,7 @@ import android.net.Uri
 
 // Add a data class for shared location info
 data class SharedLocationInfo(
-    val position: LatLng, 
+    val position: LatLng,
     val workingStatus: String,
     val receiverName: String,
     val receiverImageUrl: String,
@@ -104,9 +104,9 @@ fun MapScreen() {
                         val receiverPhoneNum = document.getString("receiver_phone")
                         if (latitude != null && longitude != null) {
                             sharedLocations = sharedLocations + (document.id to SharedLocationInfo(
-                                LatLng(latitude, longitude), 
-                                workingStatus, 
-                                receiverName, 
+                                LatLng(latitude, longitude),
+                                workingStatus,
+                                receiverName,
                                 receiverImageUrl,
                                 onlineStatus,
                                 receiverPhoneNum

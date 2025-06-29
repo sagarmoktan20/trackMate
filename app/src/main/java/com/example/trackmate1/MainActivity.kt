@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
                 override fun onLocationResult(locationResult: LocationResult) {
                     super.onLocationResult(locationResult)
                     for (location in locationResult.locations) {
-                        
+
                         Log.d("Location101", "${location.latitude}, ${location.longitude}")
 
                         val currentUser = FirebaseAuth.getInstance().currentUser;
@@ -198,7 +198,7 @@ class MainActivity : ComponentActivity() {
     }
 
 
-//    private val requestCode = 101
+    //    private val requestCode = 101
 //    val permissions = arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

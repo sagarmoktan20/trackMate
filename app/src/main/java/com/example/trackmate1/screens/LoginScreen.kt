@@ -92,77 +92,77 @@ fun LoginScreen(navController:NavHostController){
             Firebase.auth.signInWithCredential(credential)
                 .addOnCompleteListener {Task->
                     if (Task.isSuccessful){
-                    Toast.makeText(context,"Login Successful",Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context,"Login Successful",Toast.LENGTH_SHORT).show()
                         isLoggedIn = true
                         prefManager.setLoginStatus(true);
                         val currentUser = FirebaseAuth.getInstance().currentUser;
 
                         if(currentUser!= null){
                             val db = Firebase.firestore
-                        val name = currentUser?.displayName.toString();
-                        val email = currentUser?.email.toString();
-                        val phoneNumber = currentUser?.phoneNumber.toString();
-                        val image = currentUser?.photoUrl.toString();
+                            val name = currentUser?.displayName.toString();
+                            val email = currentUser?.email.toString();
+                            val phoneNumber = currentUser?.phoneNumber.toString();
+                            val image = currentUser?.photoUrl.toString();
 
 
                             if (email != null) {
-                        // Create a new user with a first and last name
-                        val user = hashMapOf(
-                            "Name" to name,
-                            "email" to email,
-                            "phone" to phoneNumber,
-                            "imageUrl" to image
-                        )
+                                // Create a new user with a first and last name
+                                val user = hashMapOf(
+                                    "Name" to name,
+                                    "email" to email,
+                                    "phone" to phoneNumber,
+                                    "imageUrl" to image
+                                )
 
 // Add a new document with a generated ID
-                        db.collection("users")
-                            .document(email)
-                            .set(user)
-                            .addOnSuccessListener { documentReference ->
-                                // Fetch admin email and set isAdmin field
-                                db.collection("users").document("Admin").get()
-                                    .addOnSuccessListener { adminDoc ->
-                                        val adminEmail = adminDoc.getString("email")
-                                        val isAdmin = (email == adminEmail)
-                                        db.collection("users").document(email)
-                                            .update("isAdmin", isAdmin)
+                                db.collection("users")
+                                    .document(email)
+                                    .set(user)
+                                    .addOnSuccessListener { documentReference ->
+                                        // Fetch admin email and set isAdmin field
+                                        db.collection("users").document("Admin").get()
+                                            .addOnSuccessListener { adminDoc ->
+                                                val adminEmail = adminDoc.getString("email")
+                                                val isAdmin = (email == adminEmail)
+                                                db.collection("users").document(email)
+                                                    .update("isAdmin", isAdmin)
+                                            }
                                     }
-                            }
-                            .addOnFailureListener { e ->
-                                Log.w("fire1", "Error adding document", e)
-                            }}else {
+                                    .addOnFailureListener { e ->
+                                        Log.w("fire1", "Error adding document", e)
+                                    }}else {
                                 Log.e("firestore", "User email is null, skipping Firestore write")
                             }
 
-                    navController.navigate(NavigationItems.Search.route){
-                        popUpTo("login") {inclusive = true}
-                        }
+                            navController.navigate(NavigationItems.Search.route){
+                                popUpTo("login") {inclusive = true}
+                            }
 
-                    }else{
+                        }else{
                             Log.w("SignIn", "signInWithCredential:failure", task.exception)
                             Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
-                    }
+                        }
                     }else{
                         Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
                     }
                 }
         }catch (e:Exception){
             Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
-                }
         }
+    }
 
     Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = if (isLoggedIn) "Welcome Back!" else "Please Log In")
 
-    AndroidView(modifier = Modifier.fillMaxWidth().height(48.dp),
-        factory = {context->
-            SignInButton(context).apply {
-                setSize(SignInButton.SIZE_WIDE)
-                setOnClickListener {
-                    val signInIntent = googleSignInClient.signInIntent
-                    launcher.launch(signInIntent)
+        AndroidView(modifier = Modifier.fillMaxWidth().height(48.dp),
+            factory = {context->
+                SignInButton(context).apply {
+                    setSize(SignInButton.SIZE_WIDE)
+                    setOnClickListener {
+                        val signInIntent = googleSignInClient.signInIntent
+                        launcher.launch(signInIntent)
 
-                     }
-        }
-})}
+                    }
+                }
+            })}
 }

@@ -131,23 +131,23 @@ fun getInvites(invitationList: SnapshotStateList<InvitationData>) {
     val firestoreDb = Firebase.firestore
     inviteListener?.remove() // Remove previous listener if any to prevent leaks
 
-   firestoreDb.collection("users").document(FirebaseAuth.getInstance()
+    firestoreDb.collection("users").document(FirebaseAuth.getInstance()
         .currentUser?.email.toString()).collection("invites")
-       .addSnapshotListener { snapshot, e ->
-           if (e != null) {
-               return@addSnapshotListener
-           }
-           if (snapshot != null) {
-               invitationList.clear()
-               Log.d("firestore", "Current data: ${snapshot.documents}")
-               for (item in snapshot) {
-                   if (item.get("invite_status") == 0L) {
-                       val imageUrl = item.getString("sender_imageUrl") ?: ""
-                       invitationList.add(InvitationData(item.id, imageUrl))
-                   }
-               }
-           }
-       }
+        .addSnapshotListener { snapshot, e ->
+            if (e != null) {
+                return@addSnapshotListener
+            }
+            if (snapshot != null) {
+                invitationList.clear()
+                Log.d("firestore", "Current data: ${snapshot.documents}")
+                for (item in snapshot) {
+                    if (item.get("invite_status") == 0L) {
+                        val imageUrl = item.getString("sender_imageUrl") ?: ""
+                        invitationList.add(InvitationData(item.id, imageUrl))
+                    }
+                }
+            }
+        }
 }
 
 fun sendInvite(searchText: String) {
@@ -211,116 +211,213 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                 onClick = {
                     val firestoreDb = Firebase.firestore
                     val myEmail = FirebaseAuth.getInstance().currentUser?.email.toString()
-                    // First update the invite status
+                    
+                    // First, get the current user's data immediately for shared_locations creation
                     firestoreDb.collection("users")
                         .document(myEmail)
-                        .collection("invites")
-                        .document(email)
-                        .update("invite_status", 1)
-                        .addOnSuccessListener {
-                            // Check if sender is admin
+                        .get()
+                        .addOnSuccessListener { userDocument ->
+                            val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
+                            val receiverName = userDocument.getString("Name") ?: ""
+                            val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
+                            val receiverPhone = userDocument.getString("phone")
+                            
+                            // Create shared_locations document data
+                            val sharedLocationData = hashMapOf(
+                                "status" to "active",
+                                "shared_by" to myEmail,
+                                "working_status" to currentWorkingStatus,
+                                "receiver_name" to receiverName,
+                                "receiver_imageUrl" to receiverImageUrl,
+                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                "online_status" to true
+                            )
+                            if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
+                                sharedLocationData["receiver_phone"] = receiverPhone
+                            }
+                            
+                            // Create shared_locations document immediately in sender's collection
                             firestoreDb.collection("users")
+                                .document(email)  // This is the sender's document
+                                .collection("shared_locations")
+                                .document(myEmail)  // This is the receiver's email
+                                .set(sharedLocationData)
+                                .addOnSuccessListener {
+                                    android.util.Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
+                                    // Set up global working status listener for this user
+                                    setupWorkingStatusListener(myEmail, email)
+                                }
+                                .addOnFailureListener { e ->
+                                    android.util.Log.e("Firestore", "Error creating shared_locations document", e)
+                                }
+                            
+                            // Now update the invite status
+                            firestoreDb.collection("users")
+                                .document(myEmail)
+                                .collection("invites")
                                 .document(email)
-                                .get()
-                                .addOnSuccessListener { senderDoc ->
-                                    val isAdmin = senderDoc.getBoolean("isAdmin") ?: false
-                                    if (isAdmin) {
-                                        // Fetch all emails in sender's shared_locations
-                                        firestoreDb.collection("users")
-                                            .document(email)
-                                            .collection("shared_locations")
-                                            .get()
-                                            .addOnSuccessListener { followingSnapshot ->
-                                                val followedEmails = followingSnapshot.documents.map { it.id }.filter { it != myEmail }
-                                                android.util.Log.d("AdminAutoConnect", "Admin is following: $followedEmails")
-                                                // For each followed email, add the accepting user to their shared_locations
-                                                followedEmails.forEach { followedEmail ->
-                                                    // Fetch the details of the current user (myEmail)
-                                                    firestoreDb.collection("users")
-                                                        .document(myEmail)
-                                                        .get()
-                                                        .addOnSuccessListener { currentUserDoc ->
-                                                            val workingStatus = currentUserDoc.getString("workingStatus") ?: "Free"
-                                                            val receiverName = currentUserDoc.getString("Name") ?: ""
-                                                            val receiverImageUrl = currentUserDoc.getString("imageUrl") ?: ""
-                                                            val receiverPhone = currentUserDoc.getString("phone")
-                                                            val sharedLocationData = hashMapOf(
-                                                                "status" to "active",
-                                                                "shared_by" to email, // admin
-                                                                "connected_user" to myEmail,
-                                                                "working_status" to workingStatus,
-                                                                "receiver_name" to receiverName,
-                                                                "receiver_imageUrl" to receiverImageUrl,
-                                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                                                "online_status" to true // Set online_status to true initially
-                                                            )
-                                                            if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
-                                                                sharedLocationData["receiver_phone"] = receiverPhone
-                                                            }
-                                                            firestoreDb.collection("users")
-                                                                .document(followedEmail)
-                                                                .collection("shared_locations")
-                                                                .document(myEmail)
-                                                                .set(sharedLocationData)
-                                                            // Also add an invite for the accepting user in the followed user's invites with invite_status = 1
-                                                            val inviteData = hashMapOf(
-                                                                "invite_status" to 1,
-                                                                "sender_imageUrl" to "",
-                                                                "sender_name" to ""
-                                                            )
+                                .update("invite_status", 1)
+                                .addOnSuccessListener {
+                                    // Check if sender is admin and handle admin-specific logic
+                                    firestoreDb.collection("users")
+                                        .document(email)
+                                        .get()
+                                        .addOnSuccessListener { senderDoc ->
+                                            val isAdmin = senderDoc.getBoolean("isAdmin") ?: false
+                                            if (isAdmin) {
+                                                // Fetch all emails in sender's shared_locations
+                                                firestoreDb.collection("users")
+                                                    .document(email)
+                                                    .collection("shared_locations")
+                                                    .get()
+                                                    .addOnSuccessListener { followingSnapshot ->
+                                                        val followedEmails = followingSnapshot.documents.map { it.id }.filter { it != myEmail }
+                                                        android.util.Log.d("AdminAutoConnect", "Admin is following: $followedEmails")
+                                                        
+                                                        // For each followed email, add the accepting user to their shared_locations
+                                                        followedEmails.forEach { followedEmail ->
+                                                            // Fetch the details of the current user (myEmail)
                                                             firestoreDb.collection("users")
                                                                 .document(myEmail)
-                                                                .collection("invites")
-                                                                .document(followedEmail)
-                                                                .set(inviteData)
-                                                            // Set up working status listener for the current user with this followed user
-                                                            setupWorkingStatusListener(myEmail, followedEmail)
+                                                                .get()
+                                                                .addOnSuccessListener { currentUserDoc ->
+                                                                    val workingStatus = currentUserDoc.getString("workingStatus") ?: "Free"
+                                                                    val receiverName = currentUserDoc.getString("Name") ?: ""
+                                                                    val receiverImageUrl = currentUserDoc.getString("imageUrl") ?: ""
+                                                                    val receiverPhone = currentUserDoc.getString("phone")
+                                                                    val sharedLocationData = hashMapOf(
+                                                                        "status" to "active",
+                                                                        "shared_by" to email, // admin
+                                                                        "connected_user" to myEmail,
+                                                                        "working_status" to workingStatus,
+                                                                        "receiver_name" to receiverName,
+                                                                        "receiver_imageUrl" to receiverImageUrl,
+                                                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                                        "online_status" to true
+                                                                    )
+                                                                    if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
+                                                                        sharedLocationData["receiver_phone"] = receiverPhone
+                                                                    }
+                                                                    firestoreDb.collection("users")
+                                                                        .document(followedEmail)
+                                                                        .collection("shared_locations")
+                                                                        .document(myEmail)
+                                                                        .set(sharedLocationData)
+                                                                    // Also add an invite for the accepting user in the followed user's invites with invite_status = 1
+                                                                    val inviteData = hashMapOf(
+                                                                        "invite_status" to 1,
+                                                                        "sender_imageUrl" to "",
+                                                                        "sender_name" to ""
+                                                                    )
+                                                                    firestoreDb.collection("users")
+                                                                        .document(myEmail)
+                                                                        .collection("invites")
+                                                                        .document(followedEmail)
+                                                                        .set(inviteData)
+                                                                    // Set up working status listener for the current user with this followed user
+                                                                    setupWorkingStatusListener(myEmail, followedEmail)
+                                                                }
+                                                        }
+                                                        
+                                                        // NEW CODE: Add all existing users to the accepting user's shared_locations
+                                                        // This makes the accepting user (E) also see all existing users (A, B, C, D)
+                                                        followedEmails.forEach { existingUserEmail ->
+                                                            // Fetch the details of each existing user
+                                                            firestoreDb.collection("users")
+                                                                .document(existingUserEmail)
+                                                                .get()
+                                                                .addOnSuccessListener { existingUserDoc ->
+                                                                    val existingUserWorkingStatus = existingUserDoc.getString("workingStatus") ?: "Free"
+                                                                    val existingUserName = existingUserDoc.getString("Name") ?: ""
+                                                                    val existingUserImageUrl = existingUserDoc.getString("imageUrl") ?: ""
+                                                                    val existingUserPhone = existingUserDoc.getString("phone")
+                                                                    
+                                                                    val existingUserSharedLocationData = hashMapOf(
+                                                                        "status" to "active",
+                                                                        "shared_by" to existingUserEmail,
+                                                                        "working_status" to existingUserWorkingStatus,
+                                                                        "receiver_name" to existingUserName,
+                                                                        "receiver_imageUrl" to existingUserImageUrl,
+                                                                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                                                        "online_status" to true
+                                                                    )
+                                                                    if (!existingUserPhone.isNullOrBlank() && existingUserPhone != "null") {
+                                                                        existingUserSharedLocationData["receiver_phone"] = existingUserPhone
+                                                                    }
+                                                                    
+                                                                    // Add this existing user to the accepting user's shared_locations
+                                                                    firestoreDb.collection("users")
+                                                                        .document(myEmail)  // Accepting user's document
+                                                                        .collection("shared_locations")
+                                                                        .document(existingUserEmail)  // Existing user's email
+                                                                        .set(existingUserSharedLocationData)
+                                                                        .addOnSuccessListener {
+                                                                            android.util.Log.d("AdminAutoConnect", "Added existing user $existingUserEmail to accepting user $myEmail shared_locations")
+                                                                            // Set up working status listener for the existing user with the accepting user
+                                                                            setupWorkingStatusListener(existingUserEmail, myEmail)
+                                                                        }
+                                                                        .addOnFailureListener { e ->
+                                                                            android.util.Log.e("AdminAutoConnect", "Error adding existing user $existingUserEmail to accepting user $myEmail shared_locations", e)
+                                                                        }
+                                                                }
+                                                                .addOnFailureListener { e ->
+                                                                    android.util.Log.e("AdminAutoConnect", "Error fetching existing user $existingUserEmail details", e)
+                                                                }
+                                                        }
+                                                        
+                                                        // NEW CODE: Add the accepting user (E) to the invites collection of all existing users (A, B, C, D)
+                                                        // This makes E appear in their "Following" list in ProfileScreen
+                                                        followedEmails.forEach { existingUserEmail ->
+                                                            // Fetch the accepting user's (E) details for sender information
+                                                            firestoreDb.collection("users")
+                                                                .document(myEmail)
+                                                                .get()
+                                                                .addOnSuccessListener { acceptingUserDoc ->
+                                                                    val acceptingUserName = acceptingUserDoc.getString("Name") ?: ""
+                                                                    val acceptingUserImageUrl = acceptingUserDoc.getString("imageUrl") ?: ""
+                                                                    
+                                                                    // Debug logging to check the values
+                                                                    android.util.Log.d("AdminAutoConnect", "Accepting user $myEmail details - Name: '$acceptingUserName', ImageUrl: '$acceptingUserImageUrl'")
+                                                                    
+                                                                    val inviteData = hashMapOf(
+                                                                        "invite_status" to 1,
+                                                                        "sender_imageUrl" to acceptingUserImageUrl,
+                                                                        "sender_name" to acceptingUserName
+                                                                    )
+                                                                    
+                                                                    // Debug logging to check the invite data
+                                                                    android.util.Log.d("AdminAutoConnect", "Invite data for $existingUserEmail: $inviteData")
+                                                                    
+                                                                    // Add E to the existing user's invites collection
+                                                                    firestoreDb.collection("users")
+                                                                        .document(existingUserEmail)  // Existing user's document
+                                                                        .collection("invites")
+                                                                        .document(myEmail)  // Accepting user's email
+                                                                        .set(inviteData)
+                                                                        .addOnSuccessListener {
+                                                                            android.util.Log.d("AdminAutoConnect", "Added accepting user $myEmail to existing user $existingUserEmail invites with status 1, name: '$acceptingUserName', imageUrl: '$acceptingUserImageUrl'")
+                                                                        }
+                                                                        .addOnFailureListener { e ->
+                                                                            android.util.Log.e("AdminAutoConnect", "Error adding accepting user $myEmail to existing user $existingUserEmail invites", e)
+                                                                        }
+                                                                }
+                                                                .addOnFailureListener { e ->
+                                                                    android.util.Log.e("AdminAutoConnect", "Error fetching accepting user $myEmail details for invites", e)
+                                                                }
                                                         }
                                                     }
                                             }
-                                    }
-                                    // Get current working status, name, and imageUrl of the receiver
-                                    firestoreDb.collection("users")
-                                        .document(myEmail)
-                                        .get()
-                                        .addOnSuccessListener { userDocument ->
-                                            val currentWorkingStatus = userDocument.getString("workingStatus") ?: "Free"
-                                            val receiverName = userDocument.getString("Name") ?: ""
-                                            val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
-                                            val receiverPhone = userDocument.getString("phone")
-                                            // After successful status update, create shared_locations document in sender's collection
-                                            val sharedLocationData = hashMapOf(
-                                                "status" to "active",
-                                                "shared_by" to myEmail,
-                                                "working_status" to currentWorkingStatus,
-                                                "receiver_name" to receiverName,
-                                                "receiver_imageUrl" to receiverImageUrl,
-                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                                                "online_status" to true // Set online_status to true initially
-                                            )
-                                            if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
-                                                sharedLocationData["receiver_phone"] = receiverPhone
-                                            }
-                                            // Create the shared_locations document in the sender's collection
-                                            firestoreDb.collection("users")
-                                                .document(email)  // This is the sender's document
-                                                .collection("shared_locations")
-                                                .document(myEmail)  // This is the receiver's email
-                                                .set(sharedLocationData)
-                                                .addOnSuccessListener {
-                                                    android.util.Log.d("Firestore", "Successfully created shared_locations document with working status, name, and imageUrl")
-                                                    // Set up global working status listener for this user
-                                                    setupWorkingStatusListener(myEmail, email)
-                                                    // No need to start FusedLocationProviderClient here; MainActivity handles location updates
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    android.util.Log.e("Firestore", "Error creating shared_locations document", e)
-                                                }
                                         }
                                         .addOnFailureListener { e ->
-                                            android.util.Log.e("Firestore", "Error getting user document for working status", e)
+                                            android.util.Log.e("Firestore", "Error checking admin status", e)
                                         }
                                 }
+                                .addOnFailureListener { e ->
+                                    android.util.Log.e("Firestore", "Error updating invite status", e)
+                                }
+                        }
+                        .addOnFailureListener { e ->
+                            android.util.Log.e("Firestore", "Error getting user document for shared_locations creation", e)
                         }
                 },
                 modifier = Modifier.width(80.dp),
@@ -331,7 +428,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
             Spacer(modifier = Modifier.width(8.dp))
             // Reject Button (right)
             Button(
-                onClick = { 
+                onClick = {
                     val firestoreDb = Firebase.firestore
                     firestoreDb.collection("users")
                         .document(FirebaseAuth.getInstance().currentUser?.email.toString())
@@ -351,7 +448,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
 // Global working status listener to update all shared_locations documents
 private fun setupWorkingStatusListener(userEmail: String, sharedWithEmail: String) {
     val firestoreDb = Firebase.firestore
-    
+
     // Listen for working status changes in the user's profile
     firestoreDb.collection("users")
         .document(userEmail)
@@ -363,7 +460,7 @@ private fun setupWorkingStatusListener(userEmail: String, sharedWithEmail: Strin
 
             snapshot?.let { doc ->
                 val newWorkingStatus = doc.getString("workingStatus") ?: "Free"
-                
+
                 // Update the working status in all shared_locations documents where this user is sharing
                 firestoreDb.collection("users")
                     .document(sharedWithEmail)  // The user who is receiving the shared location
