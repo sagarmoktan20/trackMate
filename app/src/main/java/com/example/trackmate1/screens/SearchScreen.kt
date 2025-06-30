@@ -99,6 +99,8 @@ fun SearchScreen() {
                     android.widget.Toast.makeText(context, "Please enter a valid email address.", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     sendInvite(trimmedEmail)
+                    searchText = "" // Clear the TextField
+                    android.widget.Toast.makeText(context, "Invite sent!", android.widget.Toast.LENGTH_SHORT).show()
                 }
             },colors = ButtonDefaults.buttonColors(containerColor = Color.Green)) {
                 Text("Send")
