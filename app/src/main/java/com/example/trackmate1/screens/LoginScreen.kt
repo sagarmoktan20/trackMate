@@ -1,6 +1,7 @@
 package com.example.trackmate1.screens
 
 import android.annotation.SuppressLint
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
@@ -33,6 +34,8 @@ import com.google.firebase.Firebase
 
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.firestore
+import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationConfig
+import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationService
 
 //import kotlin.coroutines.jvm.internal.CompletedContinuation.context
 
@@ -103,7 +106,15 @@ fun LoginScreen(navController:NavHostController){
                             val email = currentUser?.email.toString();
                             val phoneNumber = currentUser?.phoneNumber.toString();
                             val image = currentUser?.photoUrl.toString();
-
+                            val appId: Long = 2057916400
+                            val appSignin:String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
+                            val userName: String = email
+                            val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
+                            
+                            // Removed Zego initialization from here to prevent interference with login flow
+//                            Log.d("ZEGO_DEBUG", "About to initialize ZegoUIKitPrebuiltCallInvitationService")
+//                            ZegoUIKitPrebuiltCallInvitationService.init(context as Application?, appId, appSignin, userName,userName, callInvitationConfig)
+//                            Log.d("ZEGO_DEBUG", "ZegoUIKitPrebuiltCallInvitationService initialization completed")
 
                             if (email != null) {
                                 // Create a new user with a first and last name
@@ -159,8 +170,10 @@ fun LoginScreen(navController:NavHostController){
                 SignInButton(context).apply {
                     setSize(SignInButton.SIZE_WIDE)
                     setOnClickListener {
+
                         val signInIntent = googleSignInClient.signInIntent
                         launcher.launch(signInIntent)
+
 
                     }
                 }

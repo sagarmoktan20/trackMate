@@ -1,6 +1,6 @@
 package com.example.trackmate1.screens
 
-import android.content.Context
+import  android.content.Context
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,23 +39,19 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.trackmate1.ui.theme.Trackmate1Theme
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.tasks.Task
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.firestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.FieldValue
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import java.util.Date
+import kotlinx.coroutines.withContext
+//import com.zegocloud.uikit.prebuilt.call.ZegoUIKitPrebuiltCallInvitationConfig
+//import com.zegocloud.uikit.prebuilt.call.ZegoUIKitPrebuiltCallInvitationService
+import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationConfig
+import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationService
 
 // Data class for invitation
 data class InvitationData(val email: String, val imageUrl: String)
@@ -70,6 +66,32 @@ fun SearchScreen() {
         getInvites(invitationList)
         startAutoWorkingStatusListeners()
         startOnlineStatusMonitor()
+        
+        // Initialize Zego for incoming calls
+        val currentUser = FirebaseAuth.getInstance().currentUser
+         if (currentUser != null) {
+             val email = currentUser.email.toString()
+             val appId: Long = 2057916400
+             val appSignin: String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
+             val userName: String = email
+             // Move Zego initialization to background thread
+             CoroutineScope(Dispatchers.IO).launch {
+                 try {
+                     android.util.Log.d("ZEGO_DEBUG", "Starting Zego initialization in background thread")
+                     val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
+                     
+                     // Switch back to main thread for UI-related operations
+                     withContext(Dispatchers.Main) {
+                         // Get Application context instead of casting MainActivity
+                         val applicationContext = context.applicationContext as android.app.Application
+                         ZegoUIKitPrebuiltCallInvitationService.init(applicationContext, appId, appSignin, userName, userName, callInvitationConfig)
+                         android.util.Log.d("ZEGO_DEBUG", "Zego initialization completed successfully")
+                     }
+                 } catch (e: Exception) {
+                     android.util.Log.e("ZEGO_DEBUG", "Zego initialization failed: ${e.message}", e)
+                 }
+             }
+         }
     }
 
     Column(modifier = Modifier

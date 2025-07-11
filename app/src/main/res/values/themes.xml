@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Trackmate1" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- The correct parent theme -->
+    <style name="Theme.Trackmate1" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Your color and style overrides here -->
+    </style>
 </resources>

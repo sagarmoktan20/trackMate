@@ -2,13 +2,16 @@ package com.example.trackmate1
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
+import android.provider.Settings
 import android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS
 import android.util.Log
 import android.widget.Toast
@@ -18,7 +21,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -26,6 +31,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -51,6 +57,7 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -67,6 +74,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.firestore
+import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationService
 
 
 
@@ -91,6 +99,15 @@ import com.google.firebase.firestore.firestore
 //        }
 //    }
 class MainActivity : ComponentActivity() {
+
+
+    private val permissionsToRequest = arrayOf(
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.CAMERA,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
+
     @SuppressLint("MissingPermission")
     fun setUpLocationListener() {
         Log.d("Location101", "setUpLocationListener called")
@@ -111,8 +128,8 @@ class MainActivity : ComponentActivity() {
                         val firestoreDb = Firebase.firestore
                         val Myemail = currentUser?.email.toString();
                         val locationData = mutableMapOf<String, Any>(
-                            "lat" to location.latitude.toString()
-                            ,"long" to location.longitude.toString()
+                            "lat" to location.latitude.toString(),
+                            "long" to location.longitude.toString()
                         )
                         firestoreDb.collection("users")
                             .document(Myemail).update(locationData)
@@ -164,7 +181,6 @@ class MainActivity : ComponentActivity() {
                             }
 
 
-
 //                        latTextView.text = location.latitude.toString()
 //                        lngTextView.text = location.longitude.toString()
                     }
@@ -205,11 +221,89 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 //    askForPermission()
         setContent {
-            Trackmate1Theme  {
+            Trackmate1Theme {
+                val viewModel = viewModel<MainViewModel>()
+                val dialogQueue = viewModel.visiblePermissionDialogQueue
+
+                val multiplePermissionResultLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions(),
+                    onResult = { perms ->
+                        permissionsToRequest.forEach { permission ->
+                            viewModel.onPermissionResult(
+                                permission = permission,
+                                isGranted = perms[permission] == true
+                            )
+                        }
+                        // After permissions are handled, check for location permission and GPS
+                        val locationGranted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                                perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                        if (locationGranted) {
+                            if (!isLocationEnabled(this@MainActivity)) {
+                                showGPSNotEnabledDialog(this@MainActivity)
+                            }
+                        }
+                    }
+                )
+
+                // Automatically request all permissions on app load
+                LaunchedEffect(Unit) {
+                    multiplePermissionResultLauncher.launch(permissionsToRequest)
+                }
+
+
+//                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+//                    Greeting(
+//                        name = "Android",
+//                        modifier = Modifier.padding(innerPadding)
+//                    )
+//                }
+
+                // In MainActivity.kt, inside setContent { ... }
+// ...
+                // val dialogQueue = viewModel.visiblePermissionDialogQueue
+
+// Only show a dialog if the queue is not empty
+                if (dialogQueue.isNotEmpty()) {
+                    Log.d("DIALOG_DEBUG", "Dialog queue is NOT empty: $dialogQueue")
+                    val permissionToShow = dialogQueue.reversed().first()
+                    val isGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        permissionToShow
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                    val isPermanentlyDeclined = !isGranted && !shouldShowRequestPermissionRationale(permissionToShow)
+                    Log.d("should", "Dialog queue: $dialogQueue, permissionToShow: $permissionToShow, isGranted: $isGranted, isPermanentlyDeclined: $isPermanentlyDeclined")
+
+                    PermissionDialog(
+                        permissionTextProvider = when (permissionToShow) {
+                            Manifest.permission.CAMERA -> CameraPermissionTextProvider()
+                            Manifest.permission.RECORD_AUDIO -> RecordAudioPermissionTextProvider()
+                            Manifest.permission.ACCESS_FINE_LOCATION -> FineLocationPermissionTextProvider()
+                            Manifest.permission.ACCESS_COARSE_LOCATION -> CoarseLocationPermissionTextProvider()
+                            else -> return@Trackmate1Theme
+                        },
+                        isPermanentlyDeclined = isPermanentlyDeclined,
+                        onDismiss = viewModel::dismissDialog,
+                        onOkClick = {
+                            viewModel.dismissDialog()
+                            multiplePermissionResultLauncher.launch(
+                                arrayOf(permissionToShow)
+                            )
+                        },
+                        onGoToAppSettingsClick = ::openAppSettings
+                    )
+                } else {
+                    Log.d("DIALOG_DEBUG", "Dialog queue is empty, no dialog shown")
+                }
                 MainScreen()
             }
         }
 
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        ZegoUIKitPrebuiltCallInvitationService.unInit()
     }
 
 
@@ -224,60 +318,28 @@ class MainActivity : ComponentActivity() {
 
 }
 
+fun Activity.openAppSettings() {
+    android.util.Log.d("SETTINGS_DEBUG", "openAppSettings() called - this should only happen when user clicks 'Go to Settings' in permission dialog")
+    Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", packageName, null)
+    ).also(::startActivity)
+}
+
 
 @Composable
 fun MainScreen(){
 
     val context = LocalContext.current
     val activity = context as MainActivity
-    var permissionGranted by remember { mutableStateOf(false) }
+    // Removed redundant permissionGranted state and permissionLauncher logic
+    // All permission handling is now done in MainActivity's unified flow
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
-
-        if (fineGranted || coarseGranted) {
-            permissionGranted = true
-        } else {
-            Toast.makeText(context, "Location permission is required", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-        )
-    }
-
-    LaunchedEffect(permissionGranted) {
-        if (permissionGranted) {
-            if ((activity as MainActivity).isLocationEnabled(context)) {
-                activity.setUpLocationListener()
-            } else {
-                activity.showGPSNotEnabledDialog(context)
-            }
-        }
-    }
-
-//    if (permissionGranted) {
-//        SideEffect {
-//            if (activity.isLocationEnabled(context)) {
-//                activity.setUpLocationListener()
-//            } else {
-//                activity.showGPSNotEnabledDialog(context)
-//            }
-//        }
-//    }
     // 🔁 Observe lifecycle (when app returns from settings)
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, permissionGranted) {
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && permissionGranted) {
+            if (event == Lifecycle.Event.ON_RESUME) {
                 if (activity.isLocationEnabled(context)) {
                     activity.setUpLocationListener()
                 }
@@ -290,7 +352,6 @@ fun MainScreen(){
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
-
 
 
     val navController = rememberNavController();

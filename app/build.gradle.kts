@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.trackmate1"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -80,5 +80,14 @@ dependencies {
     implementation ("com.google.firebase:firebase-auth-ktx:22.3.1")
 
     implementation("io.coil-kt:coil-compose:2.5.0")
+
+    implementation ("com.github.ZEGOCLOUD:zego_uikit_prebuilt_call_android:+")
+    implementation("com.google.android.material:material:1.12.0")
+
+    // In your dependencies block:
+    implementation("androidx.appcompat:appcompat:1.6.1") // Or the latest stable version if 1.6.1 causes conflicts
+    // In your dependencies block:
+    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
+    implementation ("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
 
 }

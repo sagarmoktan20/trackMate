@@ -47,6 +47,12 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
 import android.content.Intent
 import android.net.Uri
+import android.view.ViewGroup
+import androidx.compose.ui.viewinterop.AndroidView
+import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoSendCallInvitationButton
+import com.zegocloud.uikit.service.defines.ZegoUIKitUser
+//import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoIncomingCallInvitationButton
+
 //import com.google.maps.android.compose.BitmapDescriptorFactory
 
 // Add a data class for shared location info
@@ -125,40 +131,62 @@ fun MapScreen() {
         }
     }
 
-    // State for selected marker
+    // State for selected marker and email
     var selectedLocation by remember { mutableStateOf<SharedLocationInfo?>(null) }
+    var selectedLocationEmail by remember { mutableStateOf<String?>(null) }
 
-    GoogleMap(
-        modifier = Modifier.fillMaxSize(),
-        cameraPositionState = cameraPositionState,
-        properties = mapProperties
-    ) {
-        // Add markers for shared locations
-        sharedLocations.forEach { (email, info) ->
-            val color = when (info.workingStatus) {
-                "Busy" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
-                "Free" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
-                "En-route" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
-                else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
-            }
-            val onlineStatusEmoji = if (info.onlineStatus) "🟢" else "🔴"
-            val onlineStatusText = if (info.onlineStatus) "Online" else "Offline"
-            Marker(
-                state = rememberMarkerState(position = info.position),
-                title = if (info.receiverName.isNotEmpty()) "${info.receiverName} ($onlineStatusEmoji $onlineStatusText)" else "$email ($onlineStatusEmoji $onlineStatusText)",
-                snippet = "Status: ${info.workingStatus}\nOnline: $onlineStatusText",
-                icon = color,
-                onClick = {
-                    selectedLocation = info
-                    false // Let the map handle default behavior (optional)
+//    Box(modifier = Modifier.fillMaxSize()) {
+//        // 📞 Incoming Call UI (hidden by default, shows when receiving calls)
+//        AndroidView(
+//            factory = { context ->
+//                ZegoIncomingCallInvitationButton(context).apply {
+//                    resourceID = "zego_uikit_incoming_call"
+//                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 200)
+//                }
+//            },
+//            modifier = Modifier
+//                .fillMaxWidth()
+//                .height(200.dp)
+//                .padding(vertical = 8.dp)
+//        )
+
+        GoogleMap(
+            modifier = Modifier.fillMaxSize(),
+            cameraPositionState = cameraPositionState,
+            properties = mapProperties
+        ) {
+            // Add markers for shared locations
+            sharedLocations.forEach { (email, info) ->
+                val color = when (info.workingStatus) {
+                    "Busy" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+                    "Free" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+                    "En-route" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
+                    else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
                 }
-            )
+                val onlineStatusEmoji = if (info.onlineStatus) "🟢" else "🔴"
+                val onlineStatusText = if (info.onlineStatus) "Online" else "Offline"
+                Marker(
+                    state = rememberMarkerState(position = info.position),
+                    title = if (info.receiverName.isNotEmpty()) "${info.receiverName} ($onlineStatusEmoji $onlineStatusText)" else "$email ($onlineStatusEmoji $onlineStatusText)",
+                    snippet = "Status: ${info.workingStatus}\nOnline: $onlineStatusText",
+                    icon = color,
+                    onClick = {
+                        selectedLocation = info
+                        selectedLocationEmail = email
+                        false // Let the map handle default behavior (optional)
+                    }
+                )
+            }
         }
-    }
+
 
     // Custom info window dialog
     selectedLocation?.let { info ->
-        Dialog(onDismissRequest = { selectedLocation = null }) {
+        val email = selectedLocationEmail ?: return@let
+        Dialog(onDismissRequest = { 
+            selectedLocation = null 
+            selectedLocationEmail = null 
+        }) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -203,9 +231,48 @@ fun MapScreen() {
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { selectedLocation = null }) {
+                    Button(onClick = { 
+                        selectedLocation = null 
+                        selectedLocationEmail = null 
+                    }) {
                         Text("Close")
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AndroidView(
+                        factory = { context ->
+                            ZegoSendCallInvitationButton(context).apply {
+                                setIsVideoCall(true)
+                                resourceID = "zego_uikit_call"
+                                layoutParams = ViewGroup.LayoutParams(180, 180) // 60dp in px
+                            }
+                        },
+                        modifier = Modifier
+                            .size(60.dp)
+                            .padding(end = 20.dp),
+                        update = { button ->
+                            button.setInvitees(
+                                listOf(ZegoUIKitUser(email, email))
+                            )
+                        }
+                    )
+                    // Voice Call Button
+                    AndroidView(
+                        factory = { context ->
+                            ZegoSendCallInvitationButton(context).apply {
+                                setIsVideoCall(false)
+                                resourceID = "zego_uikit_call"
+                                layoutParams = ViewGroup.LayoutParams(180, 180)
+                            }
+                        },
+                        modifier = Modifier
+                            .size(60.dp)
+                            .padding(end = 20.dp),
+                        update = { button ->
+                            button.setInvitees(
+                                listOf(ZegoUIKitUser(email, email))
+                            )
+                        }
+                    )
                 }
             }
         }
