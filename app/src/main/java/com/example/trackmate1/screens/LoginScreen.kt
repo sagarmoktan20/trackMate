@@ -117,31 +117,98 @@ fun LoginScreen(navController:NavHostController){
 //                            Log.d("ZEGO_DEBUG", "ZegoUIKitPrebuiltCallInvitationService initialization completed")
 
                             if (email != null) {
-                                // Create a new user with a first and last name
-                                val user = hashMapOf(
-                                    "Name" to name,
-                                    "email" to email,
-                                    "phone" to phoneNumber,
-                                    "imageUrl" to image
-                                )
-
-// Add a new document with a generated ID
+                                // First check if user document already exists
                                 db.collection("users")
                                     .document(email)
-                                    .set(user)
-                                    .addOnSuccessListener { documentReference ->
-                                        // Fetch admin email and set isAdmin field
-                                        db.collection("users").document("Admin").get()
-                                            .addOnSuccessListener { adminDoc ->
-                                                val adminEmail = adminDoc.getString("email")
-                                                val isAdmin = (email == adminEmail)
-                                                db.collection("users").document(email)
-                                                    .update("isAdmin", isAdmin)
+                                    .get()
+                                    .addOnSuccessListener { existingDoc ->
+                                        if (existingDoc.exists()) {
+                                            // User exists - merge data intelligently
+                                            val existingPhone = existingDoc.getString("phone")
+                                            val existingName = existingDoc.getString("Name")
+                                            val existingImageUrl = existingDoc.getString("imageUrl")
+                                            
+                                            // Prepare update data - preserve existing values if Google data is null/empty
+                                            val updateData = mutableMapOf<String, Any>()
+                                            
+                                            // Only update name if Google has a valid name and it's different
+                                            if (!name.isNullOrBlank() && name != "null" && name != existingName) {
+                                                updateData["Name"] = name
                                             }
+                                            
+                                            // Only update phone if Google has a valid phone AND existing phone is null/empty
+                                            if (!phoneNumber.isNullOrBlank() && phoneNumber != "null" && 
+                                                (existingPhone.isNullOrBlank() || existingPhone == "null")) {
+                                                updateData["phone"] = phoneNumber
+                                            }
+                                            
+                                            // Only update image if Google has a valid image and it's different
+                                            if (!image.isNullOrBlank() && image != "null" && image != existingImageUrl) {
+                                                updateData["imageUrl"] = image
+                                            }
+                                            
+                                            // Update only if there are changes
+                                            if (updateData.isNotEmpty()) {
+                                                db.collection("users")
+                                                    .document(email)
+                                                    .update(updateData)
+                                                    .addOnSuccessListener {
+                                                        Log.d("firestore", "Updated existing user data: $updateData")
+                                                    }
+                                                    .addOnFailureListener { e ->
+                                                        Log.w("firestore", "Error updating existing user data", e)
+                                                    }
+                                            }
+                                            
+                                            // Always check and set admin status
+                                            db.collection("users").document("Admin").get()
+                                                .addOnSuccessListener { adminDoc ->
+                                                    val adminEmail = adminDoc.getString("email")
+                                                    val isAdmin = (email == adminEmail)
+                                                    val currentIsAdmin = existingDoc.getBoolean("isAdmin") ?: false
+                                                    
+                                                    if (isAdmin != currentIsAdmin) {
+                                                        db.collection("users").document(email)
+                                                            .update("isAdmin", isAdmin)
+                                                    }
+                                                }
+                                            
+                                        } else {
+                                            // New user - create document with all available data
+                                            val user = hashMapOf(
+                                                "Name" to name,
+                                                "email" to email,
+                                                "imageUrl" to image
+                                            )
+                                            
+                                            // Only add phone if Google has a valid phone number
+                                            if (!phoneNumber.isNullOrBlank() && phoneNumber != "null") {
+                                                user["phone"] = phoneNumber
+                                            }
+                                            
+                                            db.collection("users")
+                                                .document(email)
+                                                .set(user)
+                                                .addOnSuccessListener { documentReference ->
+                                                    Log.d("firestore", "Created new user document")
+                                                    // Fetch admin email and set isAdmin field
+                                                    db.collection("users").document("Admin").get()
+                                                        .addOnSuccessListener { adminDoc ->
+                                                            val adminEmail = adminDoc.getString("email")
+                                                            val isAdmin = (email == adminEmail)
+                                                            db.collection("users").document(email)
+                                                                .update("isAdmin", isAdmin)
+                                                        }
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    Log.w("firestore", "Error creating new user document", e)
+                                                }
+                                        }
                                     }
                                     .addOnFailureListener { e ->
-                                        Log.w("fire1", "Error adding document", e)
-                                    }}else {
+                                        Log.w("firestore", "Error checking existing user document", e)
+                                    }
+                            } else {
                                 Log.e("firestore", "User email is null, skipping Firestore write")
                             }
 

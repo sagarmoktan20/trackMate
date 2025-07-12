@@ -51,6 +51,9 @@ import android.view.ViewGroup
 import androidx.compose.ui.viewinterop.AndroidView
 import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoSendCallInvitationButton
 import com.zegocloud.uikit.service.defines.ZegoUIKitUser
+import androidx.compose.material3.TextField
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 //import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoIncomingCallInvitationButton
 
 //import com.google.maps.android.compose.BitmapDescriptorFactory
@@ -85,6 +88,29 @@ fun MapScreen() {
     // State for shared locations (now includes working status)
     var sharedLocations by remember { mutableStateOf(mapOf<String, SharedLocationInfo>()) }
     var locationListener: ListenerRegistration? by remember { mutableStateOf(null) }
+    
+    // Admin detection state
+    var isAdmin by remember { mutableStateOf(false) }
+    
+    // Task assignment dialog state
+    var showTaskAssignmentDialog by remember { mutableStateOf(false) }
+    var clientName by remember { mutableStateOf("") }
+    var clientPhone by remember { mutableStateOf("") }
+    var clientLat by remember { mutableStateOf("") }
+    var clientLng by remember { mutableStateOf("") }
+
+    // Check if current user is admin
+    LaunchedEffect(Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser?.email
+        if (currentUser != null) {
+            Firebase.firestore.collection("users")
+                .document(currentUser)
+                .get()
+                .addOnSuccessListener { document ->
+                    isAdmin = document.getBoolean("isAdmin") ?: false
+                }
+        }
+    }
 
     // Listen for shared locations
     LaunchedEffect(Unit) {
@@ -187,95 +213,263 @@ fun MapScreen() {
             selectedLocation = null 
             selectedLocationEmail = null 
         }) {
-            Box(
+            androidx.compose.material3.Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp)
+                    .padding(24.dp),
+                color = androidx.compose.ui.graphics.Color.White,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // 1. Profile Image at top
                     if (info.receiverImageUrl.isNotEmpty()) {
                         Image(
                             painter = rememberAsyncImagePainter(info.receiverImageUrl),
                             contentDescription = "Profile Image",
                             modifier = Modifier
-                                .size(80.dp)
+                                .size(120.dp)
                                 .clip(CircleShape)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
                     }
-                    Text(text = info.receiverName, modifier = Modifier.padding(bottom = 8.dp))
-                    Text(text = "Status: ${info.workingStatus}")
-                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 2. Name below image
+                    Text(
+                        text = info.receiverName, 
+                        modifier = Modifier.padding(bottom = 16.dp),
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        color = androidx.compose.ui.graphics.Color.Black
+                    )
+                    
+                    // 3. Status and online status below name
+                    Text(
+                        text = "Status: ${info.workingStatus}",
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                        color = androidx.compose.ui.graphics.Color.Black
+                    )
                     Text(
                         text = if (info.onlineStatus) "Online" else "Offline",
                         color = if (info.onlineStatus) Color.Green else Color.Red,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 20.dp)
                     )
-                    // Call button if phone number is available
-                    if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
-                        Button(onClick = {
-                            val intent = Intent(Intent.ACTION_DIAL).apply {
-                                data = Uri.parse("tel:${info.receiverPhoneNum}")
+                    
+                    // 4. ZegoCloud video and audio call buttons side by side
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly
+                    ) {
+                        // Video Call Button
+                        AndroidView(
+                            factory = { context ->
+                                ZegoSendCallInvitationButton(context).apply {
+                                    setIsVideoCall(true)
+                                    resourceID = "zego_uikit_call"
+                                    layoutParams = ViewGroup.LayoutParams(180, 180)
+                                }
+                            },
+                            modifier = Modifier.size(60.dp),
+                            update = { button ->
+                                button.setInvitees(
+                                    listOf(ZegoUIKitUser(email, email))
+                                )
                             }
-                            context.startActivity(intent)
-                        }) {
+                        )
+                        
+                        // Voice Call Button
+                        AndroidView(
+                            factory = { context ->
+                                ZegoSendCallInvitationButton(context).apply {
+                                    setIsVideoCall(false)
+                                    resourceID = "zego_uikit_call"
+                                    layoutParams = ViewGroup.LayoutParams(180, 180)
+                                }
+                            },
+                            modifier = Modifier.size(60.dp),
+                            update = { button ->
+                                button.setInvitees(
+                                    listOf(ZegoUIKitUser(email, email))
+                                )
+                            }
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // 5. Offline SIM calling button below ZegoCloud buttons
+                    if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_DIAL).apply {
+                                    data = Uri.parse("tel:${info.receiverPhoneNum}")
+                                }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(Icons.Default.Call, contentDescription = "Call")
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Call")
+                            Text("Call ${info.receiverName}")
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { 
-                        selectedLocation = null 
-                        selectedLocationEmail = null 
-                    }) {
+                    
+                    // 6. Assign Task button (only for admins)
+                    if (isAdmin) {
+                        Button(
+                            onClick = {
+                                showTaskAssignmentDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = Color.Blue
+                            )
+                        ) {
+                            Text("Assign Task")
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    
+                    // 7. Close button at the bottom
+                    Button(
+                        onClick = { 
+                            selectedLocation = null 
+                            selectedLocationEmail = null 
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("Close")
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AndroidView(
-                        factory = { context ->
-                            ZegoSendCallInvitationButton(context).apply {
-                                setIsVideoCall(true)
-                                resourceID = "zego_uikit_call"
-                                layoutParams = ViewGroup.LayoutParams(180, 180) // 60dp in px
-                            }
-                        },
-                        modifier = Modifier
-                            .size(60.dp)
-                            .padding(end = 20.dp),
-                        update = { button ->
-                            button.setInvitees(
-                                listOf(ZegoUIKitUser(email, email))
-                            )
-                        }
-                    )
-                    // Voice Call Button
-                    AndroidView(
-                        factory = { context ->
-                            ZegoSendCallInvitationButton(context).apply {
-                                setIsVideoCall(false)
-                                resourceID = "zego_uikit_call"
-                                layoutParams = ViewGroup.LayoutParams(180, 180)
-                            }
-                        },
-                        modifier = Modifier
-                            .size(60.dp)
-                            .padding(end = 20.dp),
-                        update = { button ->
-                            button.setInvitees(
-                                listOf(ZegoUIKitUser(email, email))
-                            )
-                        }
-                    )
                 }
             }
         }
+    }
+    
+    // Task Assignment Dialog
+    if (showTaskAssignmentDialog) {
+        AlertDialog(
+            onDismissRequest = { showTaskAssignmentDialog = false },
+            title = { Text("Assign Task") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    OutlinedTextField(
+                        value = clientName,
+                        onValueChange = { clientName = it },
+                        label = { Text("Client Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    OutlinedTextField(
+                        value = clientPhone,
+                        onValueChange = { clientPhone = it },
+                        label = { Text("Client Phone") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    OutlinedTextField(
+                        value = clientLat,
+                        onValueChange = { clientLat = it },
+                        label = { Text("Client Latitude") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    OutlinedTextField(
+                        value = clientLng,
+                        onValueChange = { clientLng = it },
+                        label = { Text("Client Longitude") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // Validate inputs
+                        if (clientName.isBlank() || clientPhone.isBlank() || clientLat.isBlank() || clientLng.isBlank()) {
+                            android.widget.Toast.makeText(context, "Please fill all fields", android.widget.Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        
+                        // Validate coordinates
+                        val lat = clientLat.toDoubleOrNull()
+                        val lng = clientLng.toDoubleOrNull()
+                        if (lat == null || lng == null) {
+                            android.widget.Toast.makeText(context, "Please enter valid coordinates", android.widget.Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        
+                        // Get employee email from selected location
+                        val employeeEmail = selectedLocationEmail
+                        if (employeeEmail == null) {
+                            android.widget.Toast.makeText(context, "Error: Employee not found", android.widget.Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        
+                        // Get current admin user
+                        val currentUser = FirebaseAuth.getInstance().currentUser?.email
+                        if (currentUser == null) {
+                            android.widget.Toast.makeText(context, "Error: Admin not authenticated", android.widget.Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        
+                        // Create task data
+                        val taskData = hashMapOf(
+                            "clientName" to clientName,
+                            "clientPhone" to clientPhone,
+                            "clientLat" to lat,
+                            "clientLng" to lng,
+                            "assignedBy" to currentUser,
+                            "status" to "pending",
+                            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        )
+                        
+                        // Save to Firestore
+                        Firebase.firestore.collection("users")
+                            .document(employeeEmail)
+                            .collection("assigned_tasks")
+                            .add(taskData)
+                            .addOnSuccessListener { documentReference ->
+                                android.widget.Toast.makeText(context, "Task assigned successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                                showTaskAssignmentDialog = false
+                                // Clear the form
+                                clientName = ""
+                                clientPhone = ""
+                                clientLat = ""
+                                clientLng = ""
+                            }
+                            .addOnFailureListener { e ->
+                                android.widget.Toast.makeText(context, "Failed to assign task: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                    }
+                ) {
+                    Text("Assign")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showTaskAssignmentDialog = false
+                        // Clear the form
+                        clientName = ""
+                        clientPhone = ""
+                        clientLat = ""
+                        clientLng = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
