@@ -1,6 +1,7 @@
 package com.example.trackmate1.screens
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 
 import androidx.compose.foundation.layout.fillMaxSize
@@ -98,6 +99,13 @@ fun MapScreen() {
     var clientPhone by remember { mutableStateOf("") }
     var clientLat by remember { mutableStateOf("") }
     var clientLng by remember { mutableStateOf("") }
+    
+    // State for accepted task (client marker)
+    var acceptedTaskClientName by remember { mutableStateOf<String?>(null) }
+    var acceptedTaskClientPhone by remember { mutableStateOf<String?>(null) }
+    var acceptedTaskClientLat by remember { mutableStateOf<Double?>(null) }
+    var acceptedTaskClientLng by remember { mutableStateOf<Double?>(null) }
+    var hasAcceptedTask by remember { mutableStateOf(false) }
 
     // Check if current user is admin
     LaunchedEffect(Unit) {
@@ -109,6 +117,22 @@ fun MapScreen() {
                 .addOnSuccessListener { document ->
                     isAdmin = document.getBoolean("isAdmin") ?: false
                 }
+        }
+    }
+    
+    // Check for accepted task when MapScreen loads
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("task_prefs", Context.MODE_PRIVATE)
+        val hasTask = prefs.getBoolean("has_accepted_task", false)//if empty defaults to false
+        if (hasTask) {
+            acceptedTaskClientName = prefs.getString("accepted_client_name", null)
+            acceptedTaskClientPhone = prefs.getString("accepted_client_phone", null)
+            acceptedTaskClientLat = prefs.getFloat("accepted_client_lat", 0f).toDouble()
+            acceptedTaskClientLng = prefs.getFloat("accepted_client_lng", 0f).toDouble()
+            hasAcceptedTask = true
+            
+            // Clear the shared preferences after reading
+            prefs.edit().clear().apply()
         }
     }
 
@@ -203,6 +227,29 @@ fun MapScreen() {
                     }
                 )
             }
+            
+            // Add client marker if there's an accepted task
+            if (hasAcceptedTask && acceptedTaskClientLat != null && acceptedTaskClientLng != null) {
+                Marker(
+                    state = rememberMarkerState(position = LatLng(acceptedTaskClientLat!!, acceptedTaskClientLng!!)),
+                    title = "Client: ${acceptedTaskClientName ?: "Unknown"}",
+                    snippet = "Phone: ${acceptedTaskClientPhone ?: "N/A"}\nStatus: Accepted Task",
+                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED),
+                    onClick = {
+                        // Show client info dialog
+                        selectedLocation = SharedLocationInfo(
+                            position = LatLng(acceptedTaskClientLat!!, acceptedTaskClientLng!!),
+                            workingStatus = "Client Location",
+                            receiverName = acceptedTaskClientName ?: "Unknown Client",
+                            receiverImageUrl = "",
+                            onlineStatus = true,
+                            receiverPhoneNum = acceptedTaskClientPhone
+                        )
+                        selectedLocationEmail = "CLIENT_TASK"
+                        false
+                    }
+                )
+            }
         }
 
 
@@ -226,124 +273,173 @@ fun MapScreen() {
                         .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 1. Profile Image at top
-                    if (info.receiverImageUrl.isNotEmpty()) {
-                        Image(
-                            painter = rememberAsyncImagePainter(info.receiverImageUrl),
-                            contentDescription = "Profile Image",
-                            modifier = Modifier
-                                .size(120.dp)
-                                .clip(CircleShape)
-                        )
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
-                    
-                    // 2. Name below image
-                    Text(
-                        text = info.receiverName, 
-                        modifier = Modifier.padding(bottom = 16.dp),
-                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                        color = androidx.compose.ui.graphics.Color.Black
-                    )
-                    
-                    // 3. Status and online status below name
-                    Text(
-                        text = "Status: ${info.workingStatus}",
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                        color = androidx.compose.ui.graphics.Color.Black
-                    )
-                    Text(
-                        text = if (info.onlineStatus) "Online" else "Offline",
-                        color = if (info.onlineStatus) Color.Green else Color.Red,
-                        modifier = Modifier.padding(bottom = 20.dp)
-                    )
-                    
-                    // 4. ZegoCloud video and audio call buttons side by side
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly
-                    ) {
-                        // Video Call Button
-                        AndroidView(
-                            factory = { context ->
-                                ZegoSendCallInvitationButton(context).apply {
-                                    setIsVideoCall(true)
-                                    resourceID = "zego_uikit_call"
-                                    layoutParams = ViewGroup.LayoutParams(180, 180)
-                                }
-                            },
-                            modifier = Modifier.size(60.dp),
-                            update = { button ->
-                                button.setInvitees(
-                                    listOf(ZegoUIKitUser(email, email))
-                                )
-                            }
+                    // Check if this is a client task marker
+                    if (email == "CLIENT_TASK") {
+                        // Client Task Dialog - Simplified
+                        Text(
+                            text = info.receiverName, 
+                            modifier = Modifier.padding(bottom = 16.dp),
+                            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.Black
                         )
                         
-                        // Voice Call Button
-                        AndroidView(
-                            factory = { context ->
-                                ZegoSendCallInvitationButton(context).apply {
-                                    setIsVideoCall(false)
-                                    resourceID = "zego_uikit_call"
-                                    layoutParams = ViewGroup.LayoutParams(180, 180)
-                                }
-                            },
-                            modifier = Modifier.size(60.dp),
-                            update = { button ->
-                                button.setInvitees(
-                                    listOf(ZegoUIKitUser(email, email))
-                                )
-                            }
+                        // Show assigned by info
+                        Text(
+                            text = "Assigned by: ${acceptedTaskClientName?.let { "Admin" } ?: "Unknown"}",
+                            modifier = Modifier.padding(bottom = 16.dp),
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            color = androidx.compose.ui.graphics.Color.Gray
                         )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 5. Offline SIM calling button below ZegoCloud buttons
-                    if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
+                        
+                        // Phone call button
+                        if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
+                            Button(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                                        data = Uri.parse("tel:${info.receiverPhoneNum}")
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Call, contentDescription = "Call")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Call ${info.receiverName}")
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        
+                        // Close button
                         Button(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_DIAL).apply {
-                                    data = Uri.parse("tel:${info.receiverPhoneNum}")
-                                }
-                                context.startActivity(intent)
+                            onClick = { 
+                                selectedLocation = null 
+                                selectedLocationEmail = null 
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.Call, contentDescription = "Call")
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Call ${info.receiverName}")
+                            Text("Close")
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    
-                    // 6. Assign Task button (only for admins)
-                    if (isAdmin) {
-                        Button(
-                            onClick = {
-                                showTaskAssignmentDialog = true
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                containerColor = Color.Blue
+                    } else {
+                        // Regular Employee Dialog - Full features
+                        // 1. Profile Image at top
+                        if (info.receiverImageUrl.isNotEmpty()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(info.receiverImageUrl),
+                                contentDescription = "Profile Image",
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .clip(CircleShape)
                             )
-                        ) {
-                            Text("Assign Task")
+                            Spacer(modifier = Modifier.height(20.dp))
                         }
+                        
+                        // 2. Name below image
+                        Text(
+                            text = info.receiverName, 
+                            modifier = Modifier.padding(bottom = 16.dp),
+                            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.Black
+                        )
+                        
+                        // 3. Status and online status below name
+                        Text(
+                            text = "Status: ${info.workingStatus}",
+                            modifier = Modifier.padding(bottom = 8.dp),
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                            color = androidx.compose.ui.graphics.Color.Black
+                        )
+                        Text(
+                            text = if (info.onlineStatus) "Online" else "Offline",
+                            color = if (info.onlineStatus) Color.Green else Color.Red,
+                            modifier = Modifier.padding(bottom = 20.dp)
+                        )
+                        
+                        // 4. ZegoCloud video and audio call buttons side by side
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly
+                        ) {
+                            // Video Call Button
+                            AndroidView(
+                                factory = { context ->
+                                    ZegoSendCallInvitationButton(context).apply {
+                                        setIsVideoCall(true)
+                                        resourceID = "zego_uikit_call"
+                                        layoutParams = ViewGroup.LayoutParams(180, 180)
+                                    }
+                                },
+                                modifier = Modifier.size(60.dp),
+                                update = { button ->
+                                    button.setInvitees(
+                                        listOf(ZegoUIKitUser(email, email))
+                                    )
+                                }
+                            )
+                            
+                            // Voice Call Button
+                            AndroidView(
+                                factory = { context ->
+                                    ZegoSendCallInvitationButton(context).apply {
+                                        setIsVideoCall(false)
+                                        resourceID = "zego_uikit_call"
+                                        layoutParams = ViewGroup.LayoutParams(180, 180)
+                                    }
+                                },
+                                modifier = Modifier.size(60.dp),
+                                update = { button ->
+                                    button.setInvitees(
+                                        listOf(ZegoUIKitUser(email, email))
+                                    )
+                                }
+                            )
+                        }
+                        
                         Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    
-                    // 7. Close button at the bottom
-                    Button(
-                        onClick = { 
-                            selectedLocation = null 
-                            selectedLocationEmail = null 
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Close")
+                        
+                        // 5. Offline SIM calling button below ZegoCloud buttons
+                        if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
+                            Button(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                                        data = Uri.parse("tel:${info.receiverPhoneNum}")
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Call, contentDescription = "Call")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Call ${info.receiverName}")
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        
+                        // 6. Assign Task button (only for admins)
+                        if (isAdmin) {
+                            Button(
+                                onClick = {
+                                    showTaskAssignmentDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = Color.Blue
+                                )
+                            ) {
+                                Text("Assign Task")
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        
+                        // 7. Close button at the bottom
+                        Button(
+                            onClick = { 
+                                selectedLocation = null 
+                                selectedLocationEmail = null 
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Close")
+                        }
                     }
                 }
             }

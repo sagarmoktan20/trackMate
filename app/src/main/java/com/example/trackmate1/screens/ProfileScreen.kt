@@ -42,6 +42,13 @@ data class UserProfile(
 // Data class for follower
 data class FollowerData(val email: String, val name: String, val imageUrl: String)
 
+// Data class for assigned task
+data class AssignedTask(
+    val taskId: String,
+    val clientName: String,
+    val status: String
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavHostController) {
@@ -55,6 +62,8 @@ fun ProfileScreen(navController: NavHostController) {
     var followingCount by remember { mutableStateOf(0) }
     // Follower count state
     var followerCount by remember { mutableStateOf(0) }
+    // Tasks count state
+    var tasksCount by remember { mutableStateOf(0) }
 
     // Following dialog state
     var showFollowingDialog by remember { mutableStateOf(false) }
@@ -62,6 +71,9 @@ fun ProfileScreen(navController: NavHostController) {
     // Follower dialog state (for future use)
     var showFollowerDialog by remember { mutableStateOf(false) }
     var followerList by remember { mutableStateOf(listOf<FollowerData>()) }
+    // Tasks dialog state (for future use)
+    var showTasksDialog by remember { mutableStateOf(false) }
+    var tasksList by remember { mutableStateOf(listOf<AssignedTask>()) }
 
     // Add state for phone dialog
     var showPhoneDialog by remember { mutableStateOf(false) }
@@ -84,6 +96,13 @@ fun ProfileScreen(navController: NavHostController) {
                 .whereEqualTo("invite_status", 1)
                 .addSnapshotListener { snapshot, _ ->
                     followerCount = snapshot?.size() ?: 0
+                }
+            // Listen to assigned_tasks collection for tasks count
+            Firebase.firestore.collection("users")
+                .document(currentUser.email.toString())
+                .collection("assigned_tasks")
+                .addSnapshotListener { snapshot, _ ->
+                    tasksCount = snapshot?.size() ?: 0
                 }
         }
     }
@@ -190,6 +209,31 @@ fun ProfileScreen(navController: NavHostController) {
         }
     }
 
+    // Fetch tasks list when dialog is shown
+    LaunchedEffect(showTasksDialog) {
+        if (showTasksDialog) {
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            if (currentUser != null) {
+                Firebase.firestore.collection("users")
+                    .document(currentUser.email.toString())
+                    .collection("assigned_tasks")
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        tasksList = snapshot.documents.map { doc ->
+                            AssignedTask(
+                                taskId = doc.id,
+                                clientName = doc.getString("clientName") ?: "Unknown Client",
+                                status = doc.getString("status") ?: "pending"
+                            )
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        android.util.Log.e("ProfileScreen", "Error fetching tasks: ${e.message}")
+                    }
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -248,7 +292,7 @@ fun ProfileScreen(navController: NavHostController) {
                             )
                     )
                 }
-                // Follower and Following counts (right of profile pic)
+                // Follower, Following, and Tasks counts (right of profile pic)
                 Row(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -268,7 +312,7 @@ fun ProfileScreen(navController: NavHostController) {
                             color = Color.Black
                         )
                     }
-                    Spacer(modifier = Modifier.width(24.dp))
+                    Spacer(modifier = Modifier.width(16.dp))
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = followingCount.toString(),
@@ -279,6 +323,22 @@ fun ProfileScreen(navController: NavHostController) {
                         )
                         Text(
                             text = "Following",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Black
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = tasksCount.toString(),
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Green,
+                            modifier = Modifier.clickable { showTasksDialog = true }
+                        )
+                        Text(
+                            text = "Tasks",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
                             color = Color.Black
@@ -566,6 +626,122 @@ fun ProfileScreen(navController: NavHostController) {
                     },
                     confirmButton = {
                         TextButton(onClick = { showFollowerDialog = false }) {
+                            Text("Close")
+                        }
+                    }
+                )
+            }
+
+            // Tasks dialog
+            if (showTasksDialog) {
+                AlertDialog(
+                    onDismissRequest = { showTasksDialog = false },
+                    title = { Text("Assigned Tasks") },
+                    text = {
+                        if (tasksList.isEmpty()) {
+                            Text("You have no assigned tasks.")
+                        } else {
+                            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                                items(tasksList) { task ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp)
+                                    ) {
+                                        // Client name on the left
+                                        Text(
+                                            text = task.clientName,
+                                            modifier = Modifier.weight(1f),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.Black
+                                        )
+                                        
+                                        // Accept and Reject buttons on the right
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    // Handle accept task
+                                                    val currentUser = FirebaseAuth.getInstance().currentUser?.email
+                                                    if (currentUser != null) {
+                                                        // First, get the complete task details from Firestore
+                                                        Firebase.firestore.collection("users")
+                                                            .document(currentUser)
+                                                            .collection("assigned_tasks")
+                                                            .document(task.taskId)
+                                                            .get()
+                                                            .addOnSuccessListener { taskDoc ->
+                                                                if (taskDoc.exists()) {
+                                                                    val clientLat = taskDoc.getDouble("clientLat")
+                                                                    val clientLng = taskDoc.getDouble("clientLng")
+                                                                    val clientName = taskDoc.getString("clientName") ?: ""
+                                                                    val clientPhone = taskDoc.getString("clientPhone") ?: ""
+                                                                    
+                                                                    if (clientLat != null && clientLng != null) {
+                                                                        // Update task status to accepted
+                                                                        Firebase.firestore.collection("users")
+                                                                            .document(currentUser)
+                                                                            .collection("assigned_tasks")
+                                                                            .document(task.taskId)
+                                                                            .update("status", "accepted")
+                                                                            .addOnSuccessListener {
+                                                                                android.widget.Toast.makeText(context, "Task accepted! Client location will be shown on map.", android.widget.Toast.LENGTH_SHORT).show()
+                                                                                showTasksDialog = false
+                                                                                
+                                                                                // Store accepted task info for MapScreen to access
+                                                                                val prefs = context.getSharedPreferences("task_prefs", Context.MODE_PRIVATE)
+                                                                                prefs.edit().apply {
+                                                                                    putString("accepted_client_name", clientName)
+                                                                                    putString("accepted_client_phone", clientPhone)
+                                                                                    putFloat("accepted_client_lat", clientLat.toFloat())
+                                                                                    putFloat("accepted_client_lng", clientLng.toFloat())
+                                                                                    putBoolean("has_accepted_task", true)
+                                                                                }.apply()
+                                                                            }
+                                                                            .addOnFailureListener { e ->
+                                                                                android.widget.Toast.makeText(context, "Failed to accept task: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                                                            }
+                                                                    } else {
+                                                                        android.widget.Toast.makeText(context, "Error: Invalid client coordinates", android.widget.Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                } else {
+                                                                    android.widget.Toast.makeText(context, "Error: Task not found", android.widget.Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                            .addOnFailureListener { e ->
+                                                                android.widget.Toast.makeText(context, "Error fetching task details: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                                            }
+                                                    }
+                                                },
+                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                    containerColor = Color.Green
+                                                ),
+                                                modifier = Modifier.width(70.dp)
+                                            ) {
+                                                Text("Accept", fontSize = 12.sp)
+                                            }
+                                            
+                                            Button(
+                                                onClick = {
+                                                    // TODO: Handle reject task
+                                                },
+                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                    containerColor = Color.Red
+                                                ),
+                                                modifier = Modifier.width(70.dp)
+                                            ) {
+                                                Text("Reject", fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showTasksDialog = false }) {
                             Text("Close")
                         }
                     }
