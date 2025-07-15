@@ -90,4 +90,6 @@ dependencies {
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
     implementation ("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
 
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+
 }

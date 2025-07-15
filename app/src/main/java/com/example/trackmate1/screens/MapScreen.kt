@@ -14,19 +14,14 @@ import androidx.media3.common.util.Log
 import com.example.trackmate1.ui.theme.Trackmate1Theme
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationCallback
+//import com.google.android.gms.location.LocationResult
+//import com.google.android.gms.location.Priority
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.firestore
 import com.google.firebase.firestore.ListenerRegistration
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.Priority
 import com.google.firebase.firestore.FieldValue
@@ -49,12 +44,24 @@ import androidx.compose.material3.Icon
 import android.content.Intent
 import android.net.Uri
 import android.view.ViewGroup
+import androidx.annotation.OptIn
 import androidx.compose.ui.viewinterop.AndroidView
 import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoSendCallInvitationButton
 import com.zegocloud.uikit.service.defines.ZegoUIKitUser
 import androidx.compose.material3.TextField
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
+import androidx.media3.common.util.UnstableApi
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
+import kotlinx.coroutines.withContext
+import com.google.maps.android.compose.Polyline
+
 //import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoIncomingCallInvitationButton
 
 //import com.google.maps.android.compose.BitmapDescriptorFactory
@@ -69,7 +76,8 @@ data class SharedLocationInfo(
     val receiverPhoneNum: String? = null
 )
 
-@SuppressLint("UnsafeOptInUsageError")
+@OptIn(UnstableApi::class)
+@SuppressLint("MissingPermission")
 @Composable
 fun MapScreen() {
     val context = LocalContext.current
@@ -77,6 +85,8 @@ fun MapScreen() {
         context,
         android.Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
+
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(27.7172, 85.3240), 10f)
@@ -107,6 +117,77 @@ fun MapScreen() {
     var acceptedTaskClientLng by remember { mutableStateOf<Double?>(null) }
     var hasAcceptedTask by remember { mutableStateOf(false) }
 
+    // State for storing our current location for routing
+    var myCurrentLat by remember { mutableStateOf<Double?>(null) }
+    var myCurrentLng by remember { mutableStateOf<Double?>(null) }
+
+    // State for decoded route points
+    var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+
+    // Polyline decoder function
+    fun decodePolyline(encoded: String): List<LatLng> {
+        val poly = ArrayList<LatLng>()
+        var index = 0
+        val len = encoded.length
+        var lat = 0
+        var lng = 0
+        while (index < len) {
+            var b: Int
+            var shift = 0
+            var result = 0
+            do {
+                b = encoded[index++].code - 63
+                result = result or ((b and 0x1f) shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            val dlat = if ((result and 1) != 0) (result shr 1).inv() else (result shr 1)
+            lat += dlat
+            shift = 0
+            result = 0
+            do {
+                b = encoded[index++].code - 63
+                result = result or ((b and 0x1f) shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            val dlng = if ((result and 1) != 0) (result shr 1).inv() else (result shr 1)
+            lng += dlng
+            val p = LatLng(lat / 1E5, lng / 1E5)
+            poly.add(p)
+        }
+        return poly
+    }
+
+    // LocationCallback reference for cleanup
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val location = result.lastLocation
+                if (location != null) {
+                    myCurrentLat = location.latitude
+                    myCurrentLng = location.longitude
+                    Log.d("ROUTE_DEBUG", "Current location: ${location.latitude}, ${location.longitude}")
+                }
+            }
+        }
+    }
+
+    // Start/stop continuous location updates based on hasAcceptedTask
+    DisposableEffect(hasAcceptedTask) {
+        if (hasAcceptedTask && hasPermission) {
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+                .setMinUpdateIntervalMillis(2000L)
+                .build()
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                context.mainLooper
+            )
+        }
+        onDispose {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+    }
+
     // Check if current user is admin
     LaunchedEffect(Unit) {
         val currentUser = FirebaseAuth.getInstance().currentUser?.email
@@ -130,9 +211,6 @@ fun MapScreen() {
             acceptedTaskClientLat = prefs.getFloat("accepted_client_lat", 0f).toDouble()
             acceptedTaskClientLng = prefs.getFloat("accepted_client_lng", 0f).toDouble()
             hasAcceptedTask = true
-            
-            // Clear the shared preferences after reading
-            prefs.edit().clear().apply()
         }
     }
 
@@ -250,6 +328,15 @@ fun MapScreen() {
                     }
                 )
             }
+
+            // Draw the polyline if routePoints is not empty
+            if (routePoints.isNotEmpty()) {
+                Polyline(
+                    points = routePoints,
+                    color = Color.Blue,
+                    width = 5f
+                )
+            }
         }
 
 
@@ -308,7 +395,30 @@ fun MapScreen() {
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
-                        
+                        // Completed button
+                        Button(
+                            onClick = {
+                                // Clear SharedPreferences
+                                val prefs = context.getSharedPreferences("task_prefs", Context.MODE_PRIVATE)
+                                prefs.edit().clear().apply()
+                                // Reset local state
+                                acceptedTaskClientName = null
+                                acceptedTaskClientPhone = null
+                                acceptedTaskClientLat = null
+                                acceptedTaskClientLng = null
+                                hasAcceptedTask = false
+                                // Close dialog
+                                selectedLocation = null
+                                selectedLocationEmail = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF388E3C) // Green
+                            )
+                        ) {
+                            Text("Completed", color = Color.White)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
                         // Close button
                         Button(
                             onClick = { 
@@ -566,6 +676,53 @@ fun MapScreen() {
                 }
             }
         )
+    }
+
+    // Build the Directions API URL when we have both our location and the client location
+    val apiKey = "AIzaSyAnCeP9vtWPicCvHYg4jwzawvDyJ8WxCfw"
+    val directionsUrl = remember(myCurrentLat, myCurrentLng, acceptedTaskClientLat, acceptedTaskClientLng) {
+        if (myCurrentLat != null && myCurrentLng != null && acceptedTaskClientLat != null && acceptedTaskClientLng != null) {
+            val url = "https://maps.googleapis.com/maps/api/directions/json?origin=${myCurrentLat},${myCurrentLng}&destination=${acceptedTaskClientLat},${acceptedTaskClientLng}&key=$apiKey"
+            Log.d("ROUTE_DEBUG", "Directions API URL: $url")
+            url
+        } else null
+    }
+
+    // Make the HTTP request to the Directions API when the URL is available
+    LaunchedEffect(directionsUrl) {
+        if (directionsUrl != null) {
+            val client = okhttp3.OkHttpClient()
+            val request = okhttp3.Request.Builder().url(directionsUrl).build()
+            try {
+                val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    client.newCall(request).execute()
+                }
+                val json = response.body?.string()
+                Log.d("ROUTE_DEBUG", "Directions API response: $json")
+
+                // Parse the JSON and extract the polyline points string
+                if (json != null) {
+                    try {
+                        val jsonObject = org.json.JSONObject(json)
+                        val routesArray = jsonObject.getJSONArray("routes")
+                        if (routesArray.length() > 0) {
+                            val route = routesArray.getJSONObject(0)
+                            val overviewPolyline = route.getJSONObject("overview_polyline")
+                            val polylinePoints = overviewPolyline.getString("points")
+                            Log.d("ROUTE_DEBUG", "Extracted polyline points: $polylinePoints")
+                            // Decode polyline and update state
+                            routePoints = decodePolyline(polylinePoints)
+                        } else {
+                            Log.e("ROUTE_DEBUG", "No routes found in Directions API response")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ROUTE_DEBUG", "Failed to parse polyline from Directions API response: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ROUTE_DEBUG", "Directions API request failed: ${e.message}")
+            }
+        }
     }
 }
 
