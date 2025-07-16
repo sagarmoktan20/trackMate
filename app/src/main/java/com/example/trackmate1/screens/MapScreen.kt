@@ -107,8 +107,11 @@ fun MapScreen() {
     var showTaskAssignmentDialog by remember { mutableStateOf(false) }
     var clientName by remember { mutableStateOf("") }
     var clientPhone by remember { mutableStateOf("") }
-    var clientLat by remember { mutableStateOf("") }
-    var clientLng by remember { mutableStateOf("") }
+    // Remove clientLat and clientLng text state
+    // Add state for location picker dialog and selected coordinates
+    var showLocationPickerDialog by remember { mutableStateOf(false) }
+    var selectedLat by remember { mutableStateOf<Double?>(null) }
+    var selectedLng by remember { mutableStateOf<Double?>(null) }
     
     // State for accepted task (client marker)
     var acceptedTaskClientName by remember { mutableStateOf<String?>(null) }
@@ -174,8 +177,8 @@ fun MapScreen() {
     // Start/stop continuous location updates based on hasAcceptedTask
     DisposableEffect(hasAcceptedTask) {
         if (hasAcceptedTask && hasPermission) {
-            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
-                .setMinUpdateIntervalMillis(2000L)
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L)
+                .setMinUpdateIntervalMillis(15000L)
                 .build()
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
@@ -331,10 +334,17 @@ fun MapScreen() {
 
             // Draw the polyline if routePoints is not empty
             if (routePoints.isNotEmpty()) {
+                // Draw a white border (halo) first
                 Polyline(
                     points = routePoints,
-                    color = Color.Blue,
-                    width = 5f
+                    color = Color.White.copy(alpha = 0.7f),
+                    width = 20f
+                )
+                // Draw the main route on top
+                Polyline(
+                    points = routePoints,
+                    color = Color(0xFF4285F4).copy(alpha = 0.6f), // Google Blue, semi-transparent
+                    width = 12f
                 )
             }
         }
@@ -407,6 +417,8 @@ fun MapScreen() {
                                 acceptedTaskClientLat = null
                                 acceptedTaskClientLng = null
                                 hasAcceptedTask = false
+                                // Clear the route as well
+                                routePoints = emptyList()
                                 // Close dialog
                                 selectedLocation = null
                                 selectedLocationEmail = null
@@ -582,63 +594,50 @@ fun MapScreen() {
                         modifier = Modifier.fillMaxWidth()
                     )
                     
-                    OutlinedTextField(
-                        value = clientLat,
-                        onValueChange = { clientLat = it },
-                        label = { Text("Client Latitude") },
+                    Button(
+                        onClick = {
+                            showLocationPickerDialog = true
+                        },
                         modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    OutlinedTextField(
-                        value = clientLng,
-                        onValueChange = { clientLng = it },
-                        label = { Text("Client Longitude") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    ) {
+                        Text("Assign Location")
+                    }
+                    // Show picked coordinates if available
+                    if (selectedLat != null && selectedLng != null) {
+                        Text("Selected: ${String.format("%.5f", selectedLat)}, ${String.format("%.5f", selectedLng)}")
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         // Validate inputs
-                        if (clientName.isBlank() || clientPhone.isBlank() || clientLat.isBlank() || clientLng.isBlank()) {
-                            android.widget.Toast.makeText(context, "Please fill all fields", android.widget.Toast.LENGTH_SHORT).show()
+                        if (clientName.isBlank() || clientPhone.isBlank() || selectedLat == null || selectedLng == null) {
+                            android.widget.Toast.makeText(context, "Please fill all fields and pick a location", android.widget.Toast.LENGTH_SHORT).show()
                             return@TextButton
                         }
-                        
-                        // Validate coordinates
-                        val lat = clientLat.toDoubleOrNull()
-                        val lng = clientLng.toDoubleOrNull()
-                        if (lat == null || lng == null) {
-                            android.widget.Toast.makeText(context, "Please enter valid coordinates", android.widget.Toast.LENGTH_SHORT).show()
-                            return@TextButton
-                        }
-                        
                         // Get employee email from selected location
                         val employeeEmail = selectedLocationEmail
                         if (employeeEmail == null) {
                             android.widget.Toast.makeText(context, "Error: Employee not found", android.widget.Toast.LENGTH_SHORT).show()
                             return@TextButton
                         }
-                        
                         // Get current admin user
                         val currentUser = FirebaseAuth.getInstance().currentUser?.email
                         if (currentUser == null) {
                             android.widget.Toast.makeText(context, "Error: Admin not authenticated", android.widget.Toast.LENGTH_SHORT).show()
                             return@TextButton
                         }
-                        
                         // Create task data
                         val taskData = hashMapOf(
                             "clientName" to clientName,
                             "clientPhone" to clientPhone,
-                            "clientLat" to lat,
-                            "clientLng" to lng,
+                            "clientLat" to selectedLat,
+                            "clientLng" to selectedLng,
                             "assignedBy" to currentUser,
                             "status" to "pending",
                             "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                         )
-                        
                         // Save to Firestore
                         Firebase.firestore.collection("users")
                             .document(employeeEmail)
@@ -650,8 +649,8 @@ fun MapScreen() {
                                 // Clear the form
                                 clientName = ""
                                 clientPhone = ""
-                                clientLat = ""
-                                clientLng = ""
+                                selectedLat = null
+                                selectedLng = null
                             }
                             .addOnFailureListener { e ->
                                 android.widget.Toast.makeText(context, "Failed to assign task: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
@@ -668,14 +667,86 @@ fun MapScreen() {
                         // Clear the form
                         clientName = ""
                         clientPhone = ""
-                        clientLat = ""
-                        clientLng = ""
+                        selectedLat = null
+                        selectedLng = null
                     }
                 ) {
                     Text("Cancel")
                 }
             }
         )
+    }
+
+    // Location Picker Dialog
+    if (showLocationPickerDialog) {
+        Dialog(onDismissRequest = { showLocationPickerDialog = false }) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.98f)
+                    .heightIn(min = 500.dp, max = 700.dp)
+                    .padding(8.dp),
+                color = androidx.compose.ui.graphics.Color.White,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+            ) {
+                var pickerLatLng by remember { mutableStateOf<LatLng?>(null) }
+                val cameraPositionState = rememberCameraPositionState {
+                    position = CameraPosition.fromLatLngZoom(LatLng(27.7172, 85.3240), 10f)
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .heightIn(min = 500.dp, max = 700.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Pick a location", style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Box(modifier = Modifier
+                        .height(400.dp)
+                        .fillMaxWidth()) {
+                        GoogleMap(
+                            modifier = Modifier.matchParentSize(),
+                            cameraPositionState = cameraPositionState,
+                            onMapClick = { latLng ->
+                                pickerLatLng = latLng
+                            }
+                        ) {
+                            pickerLatLng?.let { latLng ->
+                                Marker(
+                                    state = rememberMarkerState(position = latLng),
+                                    title = "Selected Location"
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Button(onClick = {
+                            showLocationPickerDialog = false
+                        }) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = {
+                                if (pickerLatLng != null) {
+                                    selectedLat = pickerLatLng!!.latitude
+                                    selectedLng = pickerLatLng!!.longitude
+                                    showLocationPickerDialog = false
+                                } else {
+                                    android.widget.Toast.makeText(context, "Please pick a location", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = pickerLatLng != null
+                        ) {
+                            Text("Confirm")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Build the Directions API URL when we have both our location and the client location
