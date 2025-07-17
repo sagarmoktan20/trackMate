@@ -61,6 +61,8 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import kotlinx.coroutines.withContext
 import com.google.maps.android.compose.Polyline
+import com.google.maps.android.PolyUtil
+import android.location.Location
 
 //import com.zegocloud.uikit.prebuilt.call.invite.widget.ZegoIncomingCallInvitationButton
 
@@ -124,41 +126,15 @@ fun MapScreen() {
     var myCurrentLat by remember { mutableStateOf<Double?>(null) }
     var myCurrentLng by remember { mutableStateOf<Double?>(null) }
 
+    // State for last API call location
+    var lastApiLat by remember { mutableStateOf<Double?>(null) }
+    var lastApiLng by remember { mutableStateOf<Double?>(null) }
+
     // State for decoded route points
     var routePoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
 
-    // Polyline decoder function
-    fun decodePolyline(encoded: String): List<LatLng> {
-        val poly = ArrayList<LatLng>()
-        var index = 0
-        val len = encoded.length
-        var lat = 0
-        var lng = 0
-        while (index < len) {
-            var b: Int
-            var shift = 0
-            var result = 0
-            do {
-                b = encoded[index++].code - 63
-                result = result or ((b and 0x1f) shl shift)
-                shift += 5
-            } while (b >= 0x20)
-            val dlat = if ((result and 1) != 0) (result shr 1).inv() else (result shr 1)
-            lat += dlat
-            shift = 0
-            result = 0
-            do {
-                b = encoded[index++].code - 63
-                result = result or ((b and 0x1f) shl shift)
-                shift += 5
-            } while (b >= 0x20)
-            val dlng = if ((result and 1) != 0) (result shr 1).inv() else (result shr 1)
-            lng += dlng
-            val p = LatLng(lat / 1E5, lng / 1E5)
-            poly.add(p)
-        }
-        return poly
-    }
+    // Polyline decoder function (replace with PolyUtil.decode)
+    // fun decodePolyline(encoded: String): List<LatLng> { ... }
 
     // LocationCallback reference for cleanup
     val locationCallback = remember {
@@ -177,7 +153,7 @@ fun MapScreen() {
     // Start/stop continuous location updates based on hasAcceptedTask
     DisposableEffect(hasAcceptedTask) {
         if (hasAcceptedTask && hasPermission) {
-            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L)
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
                 .setMinUpdateIntervalMillis(15000L)
                 .build()
             fusedLocationClient.requestLocationUpdates(
@@ -265,6 +241,9 @@ fun MapScreen() {
     // State for selected marker and email
     var selectedLocation by remember { mutableStateOf<SharedLocationInfo?>(null) }
     var selectedLocationEmail by remember { mutableStateOf<String?>(null) }
+    // Add state for latest phone number and loading
+    var latestPhoneNum by remember { mutableStateOf<String?>(null) }
+    var isPhoneLoading by remember { mutableStateOf(false) }
 
 //    Box(modifier = Modifier.fillMaxSize()) {
 //        // 📞 Incoming Call UI (hidden by default, shows when receiving calls)
@@ -304,6 +283,20 @@ fun MapScreen() {
                     onClick = {
                         selectedLocation = info
                         selectedLocationEmail = email
+                        // Fetch latest phone number from Firestore
+                        isPhoneLoading = true
+                        latestPhoneNum = null
+                        Firebase.firestore.collection("users")
+                            .document(email)
+                            .get()
+                            .addOnSuccessListener { document ->
+                                latestPhoneNum = document.getString("phone")
+                                isPhoneLoading = false
+                            }
+                            .addOnFailureListener {
+                                latestPhoneNum = null
+                                isPhoneLoading = false
+                            }
                         false // Let the map handle default behavior (optional)
                     }
                 )
@@ -334,17 +327,17 @@ fun MapScreen() {
 
             // Draw the polyline if routePoints is not empty
             if (routePoints.isNotEmpty()) {
-                // Draw a white border (halo) first
+                // Draw a dark gray border (halo) first
                 Polyline(
                     points = routePoints,
-                    color = Color.White.copy(alpha = 0.7f),
-                    width = 20f
+                    color = Color(0xFF222222), // Dark gray
+                    width = 24f
                 )
-                // Draw the main route on top
+                // Draw the main blue route on top
                 Polyline(
                     points = routePoints,
-                    color = Color(0xFF4285F4).copy(alpha = 0.6f), // Google Blue, semi-transparent
-                    width = 12f
+                    color = Color(0xFF4285F4), // Google Blue
+                    width = 16f
                 )
             }
         }
@@ -356,6 +349,8 @@ fun MapScreen() {
         Dialog(onDismissRequest = { 
             selectedLocation = null 
             selectedLocationEmail = null 
+            latestPhoneNum = null
+            isPhoneLoading = false
         }) {
             androidx.compose.material3.Surface(
                 modifier = Modifier
@@ -519,11 +514,13 @@ fun MapScreen() {
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         // 5. Offline SIM calling button below ZegoCloud buttons
-                        if (!info.receiverPhoneNum.isNullOrBlank() && info.receiverPhoneNum != "null") {
+                        if (isPhoneLoading) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                        } else if (!latestPhoneNum.isNullOrBlank() && latestPhoneNum != "null") {
                             Button(
                                 onClick = {
                                     val intent = Intent(Intent.ACTION_DIAL).apply {
-                                        data = Uri.parse("tel:${info.receiverPhoneNum}")
+                                        data = Uri.parse("tel:${latestPhoneNum}")
                                     }
                                     context.startActivity(intent)
                                 },
@@ -557,6 +554,8 @@ fun MapScreen() {
                             onClick = { 
                                 selectedLocation = null 
                                 selectedLocationEmail = null 
+                                latestPhoneNum = null
+                                isPhoneLoading = false
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -749,21 +748,49 @@ fun MapScreen() {
         }
     }
 
-    // Build the Directions API URL when we have both our location and the client location
+    // Build the Directions API URL only if user has moved more than 5 meters
     val apiKey = "AIzaSyAnCeP9vtWPicCvHYg4jwzawvDyJ8WxCfw"
-    val directionsUrl = remember(myCurrentLat, myCurrentLng, acceptedTaskClientLat, acceptedTaskClientLng) {
-        if (myCurrentLat != null && myCurrentLng != null && acceptedTaskClientLat != null && acceptedTaskClientLng != null) {
-            val url = "https://maps.googleapis.com/maps/api/directions/json?origin=${myCurrentLat},${myCurrentLng}&destination=${acceptedTaskClientLat},${acceptedTaskClientLng}&key=$apiKey"
-            Log.d("ROUTE_DEBUG", "Directions API URL: $url")
-            url
-        } else null
+    var directionsUrl by remember { mutableStateOf<String?>(null) }
+
+    // Function to calculate distance between two lat/lng points in meters
+    fun distanceBetween(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Float {
+        val result = FloatArray(1)
+        Location.distanceBetween(lat1, lng1, lat2, lng2, result)
+        return result[0]
+    }
+
+    // Watch for location changes and trigger API call if moved > 20 meters
+    LaunchedEffect(myCurrentLat, myCurrentLng, acceptedTaskClientLat, acceptedTaskClientLng) {
+        if (
+            myCurrentLat != null && myCurrentLng != null &&
+            acceptedTaskClientLat != null && acceptedTaskClientLng != null
+        ) {
+            if (lastApiLat != null && lastApiLng != null) {
+                val distance = distanceBetween(myCurrentLat!!, myCurrentLng!!, lastApiLat!!, lastApiLng!!)
+                Log.d("ROUTE_DEBUG", "Distance from last API call: $distance meters")
+                if (distance > 20f) {
+                    val url = "https://maps.googleapis.com/maps/api/directions/json?origin=${myCurrentLat},${myCurrentLng}&destination=${acceptedTaskClientLat},${acceptedTaskClientLng}&key=$apiKey"
+                    Log.d("ROUTE_DEBUG", "Directions API URL: $url")
+                    directionsUrl = url
+                    lastApiLat = myCurrentLat
+                    lastApiLng = myCurrentLng
+                }
+            } else {
+                // First time, always make the call
+                val url = "https://maps.googleapis.com/maps/api/directions/json?origin=${myCurrentLat},${myCurrentLng}&destination=${acceptedTaskClientLat},${acceptedTaskClientLng}&key=$apiKey"
+                Log.d("ROUTE_DEBUG", "Directions API URL: $url (first call)")
+                directionsUrl = url
+                lastApiLat = myCurrentLat
+                lastApiLng = myCurrentLng
+            }
+        }
     }
 
     // Make the HTTP request to the Directions API when the URL is available
     LaunchedEffect(directionsUrl) {
         if (directionsUrl != null) {
             val client = okhttp3.OkHttpClient()
-            val request = okhttp3.Request.Builder().url(directionsUrl).build()
+            val request = okhttp3.Request.Builder().url(directionsUrl!!).build()
             try {
                 val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     client.newCall(request).execute()
@@ -782,7 +809,7 @@ fun MapScreen() {
                             val polylinePoints = overviewPolyline.getString("points")
                             Log.d("ROUTE_DEBUG", "Extracted polyline points: $polylinePoints")
                             // Decode polyline and update state
-                            routePoints = decodePolyline(polylinePoints)
+                            routePoints = PolyUtil.decode(polylinePoints)
                         } else {
                             Log.e("ROUTE_DEBUG", "No routes found in Directions API response")
                         }

@@ -92,4 +92,6 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
 
+    implementation ("com.google.maps.android:android-maps-utils:3.8.2")
+
 }
