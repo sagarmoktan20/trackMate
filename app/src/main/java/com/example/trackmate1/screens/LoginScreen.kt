@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavHostController
+import com.example.trackmate1.MainActivity
 import com.example.trackmate1.NavigationItems
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -110,6 +111,9 @@ fun LoginScreen(navController:NavHostController){
                             val appSignin:String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
                             val userName: String = email
                             val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
+                            
+                            // Save FCM token to Firestore after successful login
+                            (context as? MainActivity)?.saveFcmTokenToFirestore()
                             
                             // Removed Zego initialization from here to prevent interference with login flow
 //                            Log.d("ZEGO_DEBUG", "About to initialize ZegoUIKitPrebuiltCallInvitationService")

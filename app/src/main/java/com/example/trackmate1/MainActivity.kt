@@ -74,6 +74,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.firestore
+import com.google.firebase.messaging.FirebaseMessaging
 import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationService
 
 
@@ -107,6 +108,30 @@ class MainActivity : ComponentActivity() {
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
     )
+
+    // Add function to save initial FCM token
+    fun saveFcmTokenToFirestore() {
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user != null) {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val token = task.result
+                    Log.d("FCM_TOKEN", "Initial FCM Token: $token")
+                    Firebase.firestore.collection("users")
+                        .document(user.email ?: return@addOnCompleteListener)
+                        .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
+                        .addOnSuccessListener {
+                            Log.d("FCM_TOKEN", "Initial FCM token saved to Firestore successfully")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("FCM_TOKEN", "Failed to save initial FCM token: ${e.message}")
+                        }
+                } else {
+                    Log.e("FCM_TOKEN", "Failed to get initial FCM token: ${task.exception}")
+                }
+            }
+        }
+    }
 
     @SuppressLint("MissingPermission")
     fun setUpLocationListener() {

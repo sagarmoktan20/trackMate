@@ -94,4 +94,6 @@ dependencies {
 
     implementation ("com.google.maps.android:android-maps-utils:3.8.2")
 
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
 }
