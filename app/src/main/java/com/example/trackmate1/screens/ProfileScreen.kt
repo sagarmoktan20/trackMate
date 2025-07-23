@@ -84,9 +84,6 @@ fun ProfileScreen(navController: NavHostController) {
     var showPhoneDialog by remember { mutableStateOf(false) }
     var phoneInput by remember { mutableStateOf("") }
 
-    // Track known assigned task IDs for notification
-    var knownTaskIds by remember { mutableStateOf(setOf<String>()) }
-
     // Listen to shared_locations collection for following count
     LaunchedEffect(Unit) {
         val currentUser = FirebaseAuth.getInstance().currentUser
@@ -239,28 +236,6 @@ fun ProfileScreen(navController: NavHostController) {
                         android.util.Log.e("ProfileScreen", "Error fetching tasks: ${e.message}")
                     }
             }
-        }
-    }
-
-    // Listen for new assigned tasks and show notification
-    LaunchedEffect(Unit) {
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser != null) {
-            Firebase.firestore.collection("users")
-                .document(currentUser.email.toString())
-                .collection("assigned_tasks")
-                .addSnapshotListener { snapshot, _ ->
-                    val newTasks = snapshot?.documents?.map { doc ->
-                        doc.id to (doc.getString("clientName") ?: "New Task")
-                    }?.toMap() ?: emptyMap()
-                    val newTaskIds = newTasks.keys
-                    val addedTaskIds = newTaskIds - knownTaskIds
-                    addedTaskIds.forEach { id ->
-                        val clientName = newTasks[id]
-                        showTaskNotification(context, clientName)
-                    }
-                    knownTaskIds = newTaskIds
-                }
         }
     }
 
@@ -792,27 +767,6 @@ fun signOut(context: Context, webClientId: String, onComplete: () -> Unit) {
         val prefs = context.getSharedPreferences("my_prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("login_status", false).apply()
         onComplete()
-    }
-}
-
-// Notification helper function
-fun showTaskNotification(context: Context, clientName: String?) {
-    val channelId = "task_channel"
-    val channelName = "Task Notifications"
-    val notificationId = 1001
-    // Create notification channel if needed
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_DEFAULT)
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
-    }
-    val builder = NotificationCompat.Builder(context, channelId)
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
-        .setContentTitle("New Task Assigned")
-        .setContentText("Client: ${clientName ?: "Unknown"}")
-        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-    with(NotificationManagerCompat.from(context)) {
-        notify(notificationId + (clientName?.hashCode() ?: 0), builder.build())
     }
 }
 

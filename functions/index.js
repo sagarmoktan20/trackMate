@@ -1,63 +1,74 @@
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
-const {initializeApp} = require("firebase-admin/app");
-const {getFirestore} = require("firebase-admin/firestore");
-const {getMessaging} = require("firebase-admin/messaging");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { initializeApp } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
 
-// Initialize Firebase Admin
 initializeApp();
 
-exports.notifyNewTask = onDocumentCreated("users/{userId}/assigned_tasks/{taskId}", async (event) => {
-  console.log("--- Function Start ---");
-  const {userId, taskId} = event.params;
-  const task = event.data.data();
+exports.notifyNewTask = onDocumentCreated(
+  "users/{userId}/assigned_tasks/{taskId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const context = event.params;
+    const userId = context.userId;
+    const task = snap.data();
 
-  console.log(`Function triggered for userId: ${userId}, taskId: ${taskId}`);
+    console.log("--- Function Start ---");
+    console.log(`Function triggered for userId: ${userId}, taskId: ${context.taskId}`);
 
-  const db = getFirestore();
+    // Fetch the user's FCM token from Firestore
+    const userDoc = await getFirestore()
+      .collection("users")
+      .doc(userId)
+      .get();
 
-  try {
-    // Fetch user's FCM token
-    const userDoc = await db.collection("users").doc(userId).get();
-    if (!userDoc.exists) {
-        console.log(`User document not found for userId: ${userId}`);
-        return;
-    }
-
-    const userData = userDoc.data();
-    const fcmToken = userData.fcmToken;
-    console.log(`Found user data. Checking for FCM Token.`);
+    console.log("Found user data. Checking for FCM Token.");
+    const fcmToken = userDoc.get("fcmToken");
+    console.log("FCM Token found:", fcmToken);
 
     if (!fcmToken) {
       console.log(`No FCM token for user: ${userId}`);
-      return;
+      console.log("--- Function End ---");
+      return null;
     }
-    console.log(`FCM Token found: ${fcmToken}`);
 
-    // Notification payload
-    const payload = {
+    // Prepare the notification payload for sendEachForMulticast
+    const message = {
+      tokens: [fcmToken],
       notification: {
         title: "New Task Assigned",
-        body: `Client: ${task.clientName || "Unknown"}`
+        body: `Client: ${task.clientName || "Unknown"}`,
       },
       data: {
-        clientName: String(task.clientName || ""),
-        clientPhone: String(task.clientPhone || ""),
+        clientName: task.clientName || "",
+        clientPhone: task.clientPhone || "",
         clientLat: String(task.clientLat || ""),
         clientLng: String(task.clientLng || ""),
-        assignedBy: String(task.assignedBy || ""),
-        status: String(task.status || ""),
-        taskId: taskId
-      }
+        assignedBy: task.assignedBy || "",
+        status: task.status || "",
+        taskId: context.taskId,
+      },
     };
-    console.log("Payload created:", JSON.stringify(payload, null, 2));
 
-    // Send notification
+    console.log("Payload created:", JSON.stringify(message, null, 2));
     console.log("Attempting to send notification...");
-    const response = await getMessaging().sendToDevice(fcmToken, payload);
-    console.log("✅ Successfully sent notification:", response);
 
-  } catch (error) {
-    console.error("!!! CRITICAL ERROR sending notification:", error);
+    // Send the notification using sendEachForMulticast
+    try {
+      const response = await getMessaging().sendEachForMulticast(message);
+      console.log("Notification send response:", JSON.stringify(response, null, 2));
+      console.log(
+        "Notification sent to " +
+          userId +
+          " for task " +
+          context.taskId
+      );
+    } catch (error) {
+      console.error("!!! CRITICAL ERROR sending notification:", error);
+    }
+
+    console.log("--- Function End ---");
+    return null;
   }
-  console.log("--- Function End ---");
-});
+);

@@ -64,9 +64,19 @@ fun LoginScreen(navController:NavHostController){
 
     var isLoggedIn by remember { mutableStateOf(false) }
 
-    // ✅ Always check latest login status
+    // ✅ Always check latest login status and FirebaseAuth user
     LaunchedEffect(Unit) {
-        isLoggedIn = prefManager.getLoginStatus()
+        val prefStatus = prefManager.getLoginStatus()
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        if (prefStatus && firebaseUser != null) {
+            isLoggedIn = true
+        } else {
+            // If pref says logged in but Firebase user is null, reset pref
+            if (prefStatus && firebaseUser == null) {
+                prefManager.setLoginStatus(false)
+            }
+            isLoggedIn = false
+        }
     }
 
     if (isLoggedIn) {
@@ -192,7 +202,7 @@ fun LoginScreen(navController:NavHostController){
                                             
                                             db.collection("users")
                                                 .document(email)
-                                                .set(user)
+                                                .set(user, com.google.firebase.firestore.SetOptions.merge())
                                                 .addOnSuccessListener { documentReference ->
                                                     Log.d("firestore", "Created new user document")
                                                     // Fetch admin email and set isAdmin field
