@@ -34,6 +34,11 @@ import androidx.core.app.NotificationManagerCompat
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+
 
 data class UserProfile(
     val name: String = "",
@@ -648,96 +653,129 @@ fun ProfileScreen(navController: NavHostController) {
                         } else {
                             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                                 items(tasksList) { task ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
+                                    Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 8.dp)
+                                            .padding(vertical = 6.dp, horizontal = 2.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                        border = BorderStroke(1.dp, Color.LightGray)
                                     ) {
-                                        // Client name on the left
-                                        Text(
-                                            text = task.clientName,
-                                            modifier = Modifier.weight(1f),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.Black
-                                        )
-                                        
-                                        // Accept and Reject buttons on the right
                                         Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp)
                                         ) {
-                                            Button(
-                                                onClick = {
-                                                    // Handle accept task
-                                                    val currentUser = FirebaseAuth.getInstance().currentUser?.email
-                                                    if (currentUser != null) {
-                                                        // First, get the complete task details from Firestore
-                                                        Firebase.firestore.collection("users")
-                                                            .document(currentUser)
-                                                            .collection("assigned_tasks")
-                                                            .document(task.taskId)
-                                                            .get()
-                                                            .addOnSuccessListener { taskDoc ->
-                                                                if (taskDoc.exists()) {
-                                                                    val clientLat = taskDoc.getDouble("clientLat")
-                                                                    val clientLng = taskDoc.getDouble("clientLng")
-                                                                    val clientName = taskDoc.getString("clientName") ?: ""
-                                                                    val clientPhone = taskDoc.getString("clientPhone") ?: ""
-                                                                    
-                                                                    if (clientLat != null && clientLng != null) {
-                                                                        // Update task status to accepted
-                                                                        Firebase.firestore.collection("users")
-                                                                            .document(currentUser)
-                                                                            .collection("assigned_tasks")
-                                                                            .document(task.taskId)
-                                                                            .update("status", "accepted")
-                                                                            .addOnSuccessListener {
-                                                                                android.widget.Toast.makeText(context, "Task accepted! Client location will be shown on map.", android.widget.Toast.LENGTH_SHORT).show()
-                                                                                showTasksDialog = false
-                                                                                
-                                                                                // Store accepted task info for MapScreen to access
-                                                                                val prefs = context.getSharedPreferences("task_prefs", Context.MODE_PRIVATE)
-                                                                                prefs.edit().apply {
-                                                                                    putString("accepted_client_name", clientName)
-                                                                                    putString("accepted_client_phone", clientPhone)
-                                                                                    putFloat("accepted_client_lat", clientLat.toFloat())
-                                                                                    putFloat("accepted_client_lng", clientLng.toFloat())
-                                                                                    putBoolean("has_accepted_task", true)
-                                                                                }.apply()
+                                            // Client name
+                                            Text(
+                                                text = task.clientName,
+                                                modifier = Modifier.weight(1f),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.Black
+                                            )
+
+                                            // Accept/Reject or In Progress
+                                            if (task.status == "pending") {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Button(
+                                                        onClick = {
+                                                            val currentUser = FirebaseAuth.getInstance().currentUser?.email
+                                                            if (currentUser != null) {
+                                                                Firebase.firestore.collection("users")
+                                                                    .document(currentUser)
+                                                                    .collection("assigned_tasks")
+                                                                    .document(task.taskId)
+                                                                    .get()
+                                                                    .addOnSuccessListener { taskDoc ->
+                                                                        if (taskDoc.exists()) {
+                                                                            val clientLat = taskDoc.getDouble("clientLat")
+                                                                            val clientLng = taskDoc.getDouble("clientLng")
+                                                                            val clientName = taskDoc.getString("clientName") ?: ""
+                                                                            val clientPhone = taskDoc.getString("clientPhone") ?: ""
+
+                                                                            if (clientLat != null && clientLng != null) {
+                                                                                Firebase.firestore.collection("users")
+                                                                                    .document(currentUser)
+                                                                                    .collection("assigned_tasks")
+                                                                                    .document(task.taskId)
+                                                                                    .update("status", "accepted")
+                                                                                    .addOnSuccessListener {
+                                                                                        Toast.makeText(
+                                                                                            context,
+                                                                                            "Task accepted! Client location will be shown on map.",
+                                                                                            Toast.LENGTH_SHORT
+                                                                                        ).show()
+                                                                                        showTasksDialog = false
+                                                                                        val prefs = context.getSharedPreferences(
+                                                                                            "task_prefs",
+                                                                                            Context.MODE_PRIVATE
+                                                                                        )
+                                                                                        prefs.edit().apply {
+                                                                                            putString("accepted_task_id", task.taskId)
+                                                                                            putString("accepted_client_name", clientName)
+                                                                                            putString("accepted_client_phone", clientPhone)
+                                                                                            putFloat("accepted_client_lat", clientLat.toFloat())
+                                                                                            putFloat("accepted_client_lng", clientLng.toFloat())
+                                                                                            putBoolean("has_accepted_task", true)
+                                                                                        }.apply()
+                                                                                        tasksList = tasksList.map {
+                                                                                            if (it.taskId == task.taskId)
+                                                                                                it.copy(status = "accepted")
+                                                                                            else it
+                                                                                        }
+                                                                                    }
+                                                                                    .addOnFailureListener { e ->
+                                                                                        Toast.makeText(
+                                                                                            context,
+                                                                                            "Failed to accept task: ${e.message}",
+                                                                                            Toast.LENGTH_SHORT
+                                                                                        ).show()
+                                                                                    }
+                                                                            } else {
+                                                                                Toast.makeText(context, "Error: Invalid client coordinates", Toast.LENGTH_SHORT).show()
                                                                             }
-                                                                            .addOnFailureListener { e ->
-                                                                                android.widget.Toast.makeText(context, "Failed to accept task: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                                                            }
-                                                                    } else {
-                                                                        android.widget.Toast.makeText(context, "Error: Invalid client coordinates", android.widget.Toast.LENGTH_SHORT).show()
+                                                                        } else {
+                                                                            Toast.makeText(context, "Error: Task not found", Toast.LENGTH_SHORT).show()
+                                                                        }
                                                                     }
-                                                                } else {
-                                                                    android.widget.Toast.makeText(context, "Error: Task not found", android.widget.Toast.LENGTH_SHORT).show()
-                                                                }
+                                                                    .addOnFailureListener { e ->
+                                                                        Toast.makeText(context, "Error fetching task details: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                                    }
                                                             }
-                                                            .addOnFailureListener { e ->
-                                                                android.widget.Toast.makeText(context, "Error fetching task details: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Green),
+                                                        modifier = Modifier.width(70.dp)
+                                                    ) {
+                                                        Text("Accept", fontSize = 12.sp)
                                                     }
-                                                },
-                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                    containerColor = Color.Green
-                                                ),
-                                                modifier = Modifier.width(70.dp)
-                                            ) {
-                                                Text("Accept", fontSize = 12.sp)
-                                            }
-                                            
-                                            Button(
-                                                onClick = {
-                                                    // TODO: Handle reject task
-                                                },
-                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                    containerColor = Color.Red
-                                                ),
-                                                modifier = Modifier.width(70.dp)
-                                            ) {
-                                                Text("Reject", fontSize = 12.sp)
+
+                                                    Button(
+                                                        onClick = {
+                                                            // TODO: Handle reject
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                                                        modifier = Modifier.width(70.dp)
+                                                    ) {
+                                                        Text("Reject", fontSize = 12.sp)
+                                                    }
+                                                }
+                                            } else if (task.status == "accepted") {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(
+                                                            color = Color(0xFF43A047), // Green
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        )
+                                                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                                                ) {
+                                                    Text(
+                                                        "In Progress",
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -752,6 +790,8 @@ fun ProfileScreen(navController: NavHostController) {
                     }
                 )
             }
+
+
         }
     }
 }

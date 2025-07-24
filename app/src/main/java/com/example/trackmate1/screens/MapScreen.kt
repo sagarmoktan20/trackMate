@@ -121,6 +121,7 @@ fun MapScreen() {
     var acceptedTaskClientLat by remember { mutableStateOf<Double?>(null) }
     var acceptedTaskClientLng by remember { mutableStateOf<Double?>(null) }
     var hasAcceptedTask by remember { mutableStateOf(false) }
+    var acceptedTaskId by remember { mutableStateOf<String?>(null) }
 
     // State for storing our current location for routing
     var myCurrentLat by remember { mutableStateOf<Double?>(null) }
@@ -189,6 +190,7 @@ fun MapScreen() {
             acceptedTaskClientPhone = prefs.getString("accepted_client_phone", null)
             acceptedTaskClientLat = prefs.getFloat("accepted_client_lat", 0f).toDouble()
             acceptedTaskClientLng = prefs.getFloat("accepted_client_lng", 0f).toDouble()
+            acceptedTaskId = prefs.getString("accepted_task_id", null)
             hasAcceptedTask = true
         }
     }
@@ -403,20 +405,53 @@ fun MapScreen() {
                         // Completed button
                         Button(
                             onClick = {
-                                // Clear SharedPreferences
+                                // Delete the accepted task from Firestore
+                                val currentUser = FirebaseAuth.getInstance().currentUser?.email
+                                android.util.Log.d("CompletedButton", "currentUser: $currentUser")
                                 val prefs = context.getSharedPreferences("task_prefs", Context.MODE_PRIVATE)
-                                prefs.edit().clear().apply()
-                                // Reset local state
-                                acceptedTaskClientName = null
-                                acceptedTaskClientPhone = null
-                                acceptedTaskClientLat = null
-                                acceptedTaskClientLng = null
-                                hasAcceptedTask = false
-                                // Clear the route as well
-                                routePoints = emptyList()
-                                // Close dialog
-                                selectedLocation = null
-                                selectedLocationEmail = null
+                                val acceptedTaskId = prefs.getString("accepted_task_id", null)
+                                android.util.Log.d("CompletedButton", "acceptedTaskId: $acceptedTaskId")
+                                if (currentUser != null && acceptedTaskId != null) {
+                                    android.util.Log.d("CompletedButton", "Entered IF: Deleting task from Firestore")
+                                    com.google.firebase.Firebase.firestore.collection("users")
+                                        .document(currentUser)
+                                        .collection("assigned_tasks")
+                                        .document(acceptedTaskId)
+                                        .delete()
+                                        .addOnSuccessListener {
+                                            android.util.Log.d("CompletedButton", "Task deleted successfully from Firestore")
+                                            android.widget.Toast.makeText(context, "Task completed and removed!", android.widget.Toast.LENGTH_SHORT).show()
+                                            // Clear SharedPreferences
+                                            prefs.edit().clear().apply()
+                                            // Reset local state
+                                            acceptedTaskClientName = null
+                                            acceptedTaskClientPhone = null
+                                            acceptedTaskClientLat = null
+                                            acceptedTaskClientLng = null
+                                            hasAcceptedTask = false
+                                            // Clear the route as well
+                                            routePoints = emptyList()
+                                            // Close dialog
+                                            selectedLocation = null
+                                            selectedLocationEmail = null
+                                        }
+                                        .addOnFailureListener { e ->
+                                            android.util.Log.e("CompletedButton", "Failed to delete task: ${e.message}")
+                                            android.widget.Toast.makeText(context, "Failed to remove task: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                } else {
+                                    android.util.Log.d("CompletedButton", "Entered ELSE: Either currentUser or acceptedTaskId is null")
+                                    // Fallback: just clear state if no taskId
+                                    prefs.edit().clear().apply()
+                                    acceptedTaskClientName = null
+                                    acceptedTaskClientPhone = null
+                                    acceptedTaskClientLat = null
+                                    acceptedTaskClientLng = null
+                                    hasAcceptedTask = false
+                                    routePoints = emptyList()
+                                    selectedLocation = null
+                                    selectedLocationEmail = null
+                                }
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = androidx.compose.material3.ButtonDefaults.buttonColors(
