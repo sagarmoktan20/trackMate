@@ -34,10 +34,13 @@ import androidx.core.app.NotificationManagerCompat
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.util.Log
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+
+import androidx.compose.ui.graphics.RectangleShape
 
 
 data class UserProfile(
@@ -167,6 +170,7 @@ fun ProfileScreen(navController: NavHostController) {
     LaunchedEffect(showFollowingDialog) {
         if (showFollowingDialog) {
             val currentUser = FirebaseAuth.getInstance().currentUser
+
             if (currentUser != null) {
                 Firebase.firestore.collection("users")
                     .document(currentUser.email.toString())
@@ -651,6 +655,7 @@ fun ProfileScreen(navController: NavHostController) {
                         if (tasksList.isEmpty()) {
                             Text("You have no assigned tasks.")
                         } else {
+                            val hasAcceptedTask = tasksList.any { it.status == "accepted" }
                             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                                 items(tasksList) { task ->
                                     Card(
@@ -678,6 +683,14 @@ fun ProfileScreen(navController: NavHostController) {
                                             // Accept/Reject or In Progress
                                             if (task.status == "pending") {
                                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+//                                                    if (hasAcceptedTask) {
+//                                                        Text(
+//                                                            "Finish your current task to accept another",
+//                                                            color = Color.Red,
+//                                                            fontSize = 10.sp,
+//                                                            modifier = Modifier.padding(start = 4.dp)
+//                                                        )
+//                                                    }
                                                     Button(
                                                         onClick = {
                                                             val currentUser = FirebaseAuth.getInstance().currentUser?.email
@@ -743,21 +756,39 @@ fun ProfileScreen(navController: NavHostController) {
                                                                         Toast.makeText(context, "Error fetching task details: ${e.message}", Toast.LENGTH_SHORT).show()
                                                                     }
                                                             }
+
+
                                                         },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Green),
-                                                        modifier = Modifier.width(70.dp)
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = Color(0xFFA8E6CF), // Pastel green
+                                                            contentColor = Color(0xFF2E7D32)    // Darker green text
+                                                        ),
+                                                        modifier = Modifier
+                                                            .width(70.dp)
+                                                            .height(35.dp)
+                                                            .border(1.dp, Color(0xFF81C784), RectangleShape), // Subtle green border
+                                                        shape = RectangleShape,
+                                                        enabled = !hasAcceptedTask // Disable if any task is already accepted
                                                     ) {
-                                                        Text("Accept", fontSize = 12.sp)
+                                                        Text("Accept", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                                     }
 
                                                     Button(
                                                         onClick = {
                                                             // TODO: Handle reject
                                                         },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                                                        modifier = Modifier.width(70.dp)
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = Color(0xFFFF8C94), // Pastel red
+                                                            contentColor = Color(0xFFC62828)    // Darker red text
+                                                        ),
+                                                        modifier = Modifier
+                                                            .width(70.dp)
+                                                            .height(35.dp)
+                                                            .border(1.dp, Color(0xFFE57373), RectangleShape), // Subtle red border
+                                                        shape = RectangleShape,
+                                                        enabled = !hasAcceptedTask
                                                     ) {
-                                                        Text("Reject", fontSize = 12.sp)
+                                                        Text("Reject", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                                     }
                                                 }
                                             } else if (task.status == "accepted") {
