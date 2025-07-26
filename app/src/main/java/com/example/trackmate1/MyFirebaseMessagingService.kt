@@ -23,8 +23,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
         Log.d("FCM_MESSAGE", "Message received: ${remoteMessage.data}")
+        
+        // Check if the message contains a priority flag
+        val isPriorityHigh = remoteMessage.data["priority"] == "high"
+        Log.d("FCM_MESSAGE", "Priority high: $isPriorityHigh")
+        
         // Show notification even if app is in foreground
-        showNotification(remoteMessage)
+        showNotification(remoteMessage, isPriorityHigh)
     }
     
     private fun saveFcmTokenToFirestore(token: String) {
@@ -43,9 +48,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
-    private fun showNotification(remoteMessage: RemoteMessage) {
-        val channelId = "task_channel"
-        val channelName = "Task Notifications"
+    private fun showNotification(remoteMessage: RemoteMessage, isPriorityHigh: Boolean = false) {
+        // Use a different channel for high priority notifications
+        val channelId = if (isPriorityHigh) "task_channel_high" else "task_channel"
+        val channelName = if (isPriorityHigh) "High Priority Task Notifications" else "Task Notifications"
         val notificationId = (remoteMessage.data["taskId"]?.hashCode() ?: System.currentTimeMillis().toInt())
 
         // Extract title and body from notification or data
@@ -54,7 +60,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         // Create notification channel if needed
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_DEFAULT)
+            // Use IMPORTANCE_HIGH instead of IMPORTANCE_DEFAULT to make notification appear on top
+            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH)
+            // Set additional properties to make notification more prominent
+            channel.enableLights(true)
+            channel.enableVibration(true)
+            channel.setShowBadge(true)
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
@@ -62,9 +73,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            // Use HIGH priority for pre-Oreo devices
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            // Make notification heads-up (appears on top of screen)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            // Auto-cancel when tapped
+            .setAutoCancel(true)
+            // Add vibration
+            .setVibrate(longArrayOf(0, 250, 250, 250))
+            // Set visibility on lock screen
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         with(NotificationManagerCompat.from(this)) {
             notify(notificationId, builder.build())
         }
     }
-} 
+}

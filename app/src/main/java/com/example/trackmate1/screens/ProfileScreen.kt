@@ -34,7 +34,6 @@ import androidx.core.app.NotificationManagerCompat
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import android.util.Log
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
@@ -170,7 +169,6 @@ fun ProfileScreen(navController: NavHostController) {
     LaunchedEffect(showFollowingDialog) {
         if (showFollowingDialog) {
             val currentUser = FirebaseAuth.getInstance().currentUser
-
             if (currentUser != null) {
                 Firebase.firestore.collection("users")
                     .document(currentUser.email.toString())
@@ -683,14 +681,6 @@ fun ProfileScreen(navController: NavHostController) {
                                             // Accept/Reject or In Progress
                                             if (task.status == "pending") {
                                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                                                    if (hasAcceptedTask) {
-//                                                        Text(
-//                                                            "Finish your current task to accept another",
-//                                                            color = Color.Red,
-//                                                            fontSize = 10.sp,
-//                                                            modifier = Modifier.padding(start = 4.dp)
-//                                                        )
-//                                                    }
                                                     Button(
                                                         onClick = {
                                                             val currentUser = FirebaseAuth.getInstance().currentUser?.email
@@ -772,7 +762,14 @@ fun ProfileScreen(navController: NavHostController) {
                                                     ) {
                                                         Text("Accept", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                                     }
-
+                                                    if (hasAcceptedTask) {
+                                                        Text(
+                                                            "Finish your current task to accept another",
+                                                            color = Color.Red,
+                                                            fontSize = 10.sp,
+                                                            modifier = Modifier.padding(start = 4.dp)
+                                                        )
+                                                    }
                                                     Button(
                                                         onClick = {
                                                             // TODO: Handle reject

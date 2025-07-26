@@ -7,6 +7,4 @@ sealed class NavigationItems(val route: String) {
     object Search: NavigationItems("search")
     object Login: NavigationItems("Login")
 
-
-
 }

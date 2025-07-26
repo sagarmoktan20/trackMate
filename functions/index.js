@@ -40,6 +40,47 @@ exports.notifyNewTask = onDocumentCreated(
         title: "New Task Assigned",
         body: `Client: ${task.clientName || "Unknown"}`,
       },
+      android: {
+        // Set high priority for Android
+        priority: "high",
+        notification: {
+          // Sound, vibration and priority settings
+          sound: "default",
+          priority: "high",
+          channelId: "task_channel",
+          // Make notification visible on lock screen
+          visibility: "public",
+          // Notification icon (optional)
+          icon: "ic_dialog_info",
+          // Set color (optional)
+          color: "#f45342"
+        }
+      },
+      apns: {
+        // Set high priority for iOS
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            // Sound and badge settings
+            sound: "default",
+            badge: 1,
+            // Critical alerts bypass Do Not Disturb
+            "content-available": 1,
+          },
+        },
+      },
+      // Set high priority for web
+      webpush: {
+        headers: {
+          Urgency: "high",
+        },
+        notification: {
+          // Require interaction prevents auto-dismissal
+          requireInteraction: true,
+        },
+      },
       data: {
         clientName: task.clientName || "",
         clientPhone: task.clientPhone || "",
@@ -48,6 +89,8 @@ exports.notifyNewTask = onDocumentCreated(
         assignedBy: task.assignedBy || "",
         status: task.status || "",
         taskId: context.taskId,
+        // Add a priority flag that can be read by the client app
+        priority: "high",
       },
     };
 
