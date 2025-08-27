@@ -57,37 +57,36 @@ class PreferenceManager(context: Context) {
 
 @SuppressLint("SuspiciousIndentation")
 @Composable
-fun LoginScreen(navController:NavHostController){
-    val context = LocalContext.current;
+fun LoginScreen(navController: NavHostController) {
+    val context = LocalContext.current
     val prefManager = remember { PreferenceManager(context) }
-//    var isLoggedIn by remember { mutableStateOf(prefManager.getLoginStatus()) }
 
-    var isLoggedIn by remember { mutableStateOf(false) }
+    // ✅ Initialize isLoggedIn with the value from SharedPreferences
+    var isLoggedIn by remember { mutableStateOf(prefManager.getLoginStatus()) }
 
-    // ✅ Always check latest login status and FirebaseAuth user
+    // ✅ Check for a logged-in user and redirect immediately if needed
     LaunchedEffect(Unit) {
-        val prefStatus = prefManager.getLoginStatus()
         val firebaseUser = FirebaseAuth.getInstance().currentUser
-        if (prefStatus && firebaseUser != null) {
-            isLoggedIn = true
-        } else {
-            // If pref says logged in but Firebase user is null, reset pref
-            if (prefStatus && firebaseUser == null) {
-                prefManager.setLoginStatus(false)
-            }
-            isLoggedIn = false
-        }
-    }
-
-    if (isLoggedIn) {
-        LaunchedEffect(Unit) {
+        if (isLoggedIn && firebaseUser != null) {
             navController.navigate(NavigationItems.Search.route) {
                 popUpTo("login") { inclusive = true }
             }
+        } else {
+            // If pref says logged in but Firebase user is null, reset pref
+            if (isLoggedIn && firebaseUser == null) {
+                prefManager.setLoginStatus(false)
+                isLoggedIn = false
+            }
         }
+    }
+
+    if (isLoggedIn && FirebaseAuth.getInstance().currentUser != null) {
+        // No need for a second LaunchedEffect or a return statement here.
+        // The first one handles navigation. This just prevents the rest of the code from executing.
         return
     }
 
+    // ... (rest of the code for the login button and UI) ...
     val googleSignInOption = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken("9964737077-gp26ao3ddcl27dni79sd6ugkkf1hpn2p.apps.googleusercontent.com")
@@ -95,73 +94,57 @@ fun LoginScreen(navController:NavHostController){
             .build()
     }
     val googleSignInClient = remember {
-        GoogleSignIn.getClient(context,googleSignInOption)
+        GoogleSignIn.getClient(context, googleSignInOption)
     }
 
-    val launcher = rememberLauncherForActivityResult(contract = ActivityResultContracts.StartActivityForResult()) {result->
+    val launcher = rememberLauncherForActivityResult(contract = ActivityResultContracts.StartActivityForResult()) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.result
-            val credential = GoogleAuthProvider.getCredential(account.idToken,null)
+            val credential = GoogleAuthProvider.getCredential(account.idToken, null)
             Firebase.auth.signInWithCredential(credential)
-                .addOnCompleteListener {Task->
-                    if (Task.isSuccessful){
-                        Toast.makeText(context,"Login Successful",Toast.LENGTH_SHORT).show()
+                .addOnCompleteListener { Task ->
+                    if (Task.isSuccessful) {
+                        Toast.makeText(context, "Login Successful", Toast.LENGTH_SHORT).show()
                         isLoggedIn = true
-                        prefManager.setLoginStatus(true);
-                        val currentUser = FirebaseAuth.getInstance().currentUser;
+                        prefManager.setLoginStatus(true)
+                        val currentUser = FirebaseAuth.getInstance().currentUser
 
-                        if(currentUser!= null){
+                        if (currentUser != null) {
+                            // ... (rest of your Firebase/Firestore and Zego logic) ...
                             val db = Firebase.firestore
                             val name = currentUser?.displayName.toString();
                             val email = currentUser?.email.toString();
                             val phoneNumber = currentUser?.phoneNumber.toString();
                             val image = currentUser?.photoUrl.toString();
                             val appId: Long = 2057916400
-                            val appSignin:String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
+                            val appSignin: String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
                             val userName: String = email
                             val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
-                            
-                            // Save FCM token to Firestore after successful login
-                            (context as? MainActivity)?.saveFcmTokenToFirestore()
-                            
-                            // Removed Zego initialization from here to prevent interference with login flow
-//                            Log.d("ZEGO_DEBUG", "About to initialize ZegoUIKitPrebuiltCallInvitationService")
-//                            ZegoUIKitPrebuiltCallInvitationService.init(context as Application?, appId, appSignin, userName,userName, callInvitationConfig)
-//                            Log.d("ZEGO_DEBUG", "ZegoUIKitPrebuiltCallInvitationService initialization completed")
 
+                            (context as? MainActivity)?.saveFcmTokenToFirestore()
                             if (email != null) {
-                                // First check if user document already exists
                                 db.collection("users")
                                     .document(email)
                                     .get()
                                     .addOnSuccessListener { existingDoc ->
                                         if (existingDoc.exists()) {
-                                            // User exists - merge data intelligently
                                             val existingPhone = existingDoc.getString("phone")
                                             val existingName = existingDoc.getString("Name")
                                             val existingImageUrl = existingDoc.getString("imageUrl")
-                                            
-                                            // Prepare update data - preserve existing values if Google data is null/empty
                                             val updateData = mutableMapOf<String, Any>()
-                                            
-                                            // Only update name if Google has a valid name and it's different
+
                                             if (!name.isNullOrBlank() && name != "null" && name != existingName) {
                                                 updateData["Name"] = name
                                             }
-                                            
-                                            // Only update phone if Google has a valid phone AND existing phone is null/empty
-                                            if (!phoneNumber.isNullOrBlank() && phoneNumber != "null" && 
+                                            if (!phoneNumber.isNullOrBlank() && phoneNumber != "null" &&
                                                 (existingPhone.isNullOrBlank() || existingPhone == "null")) {
                                                 updateData["phone"] = phoneNumber
                                             }
-                                            
-                                            // Only update image if Google has a valid image and it's different
                                             if (!image.isNullOrBlank() && image != "null" && image != existingImageUrl) {
                                                 updateData["imageUrl"] = image
                                             }
-                                            
-                                            // Update only if there are changes
+
                                             if (updateData.isNotEmpty()) {
                                                 db.collection("users")
                                                     .document(email)
@@ -173,39 +156,31 @@ fun LoginScreen(navController:NavHostController){
                                                         Log.w("firestore", "Error updating existing user data", e)
                                                     }
                                             }
-                                            
-                                            // Always check and set admin status
+
                                             db.collection("users").document("Admin").get()
                                                 .addOnSuccessListener { adminDoc ->
                                                     val adminEmail = adminDoc.getString("email")
                                                     val isAdmin = (email == adminEmail)
                                                     val currentIsAdmin = existingDoc.getBoolean("isAdmin") ?: false
-                                                    
                                                     if (isAdmin != currentIsAdmin) {
                                                         db.collection("users").document(email)
                                                             .update("isAdmin", isAdmin)
                                                     }
                                                 }
-                                            
                                         } else {
-                                            // New user - create document with all available data
                                             val user = hashMapOf(
                                                 "Name" to name,
                                                 "email" to email,
                                                 "imageUrl" to image
                                             )
-                                            
-                                            // Only add phone if Google has a valid phone number
                                             if (!phoneNumber.isNullOrBlank() && phoneNumber != "null") {
                                                 user["phone"] = phoneNumber
                                             }
-                                            
                                             db.collection("users")
                                                 .document(email)
                                                 .set(user, com.google.firebase.firestore.SetOptions.merge())
-                                                .addOnSuccessListener { documentReference ->
+                                                .addOnSuccessListener {
                                                     Log.d("firestore", "Created new user document")
-                                                    // Fetch admin email and set isAdmin field
                                                     db.collection("users").document("Admin").get()
                                                         .addOnSuccessListener { adminDoc ->
                                                             val adminEmail = adminDoc.getString("email")
@@ -226,37 +201,33 @@ fun LoginScreen(navController:NavHostController){
                                 Log.e("firestore", "User email is null, skipping Firestore write")
                             }
 
-                            navController.navigate(NavigationItems.Search.route){
-                                popUpTo("login") {inclusive = true}
+                            navController.navigate(NavigationItems.Search.route) {
+                                popUpTo("login") { inclusive = true }
                             }
-
-                        }else{
-                            Log.w("SignIn", "signInWithCredential:failure", task.exception)
-                            Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
+                        } else {
+                            Log.w("SignIn", "signInWithCredential:failure", Task.exception)
+                            Toast.makeText(context, "Login Failed", Toast.LENGTH_SHORT).show()
                         }
-                    }else{
-                        Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Login Failed", Toast.LENGTH_SHORT).show()
                     }
                 }
-        }catch (e:Exception){
-            Toast.makeText(context,"Login Failed",Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(context, "Login Failed", Toast.LENGTH_SHORT).show()
         }
     }
 
     Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = if (isLoggedIn) "Welcome Back!" else "Please Log In")
-
         AndroidView(modifier = Modifier.fillMaxWidth().height(48.dp),
-            factory = {context->
+            factory = { context ->
                 SignInButton(context).apply {
                     setSize(SignInButton.SIZE_WIDE)
                     setOnClickListener {
-
                         val signInIntent = googleSignInClient.signInIntent
                         launcher.launch(signInIntent)
-
-
                     }
                 }
-            })}
+            })
+    }
 }

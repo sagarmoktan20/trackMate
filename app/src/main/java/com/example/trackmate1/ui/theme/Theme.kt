@@ -50,6 +50,9 @@ fun Trackmate1Theme(
         else -> LightColorScheme
     }
 
+//    val activity = LocalContext.current as? Activity
+//    activity?.window?.statusBarColor = android.graphics.Color.TRANSPARENT
+    
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
