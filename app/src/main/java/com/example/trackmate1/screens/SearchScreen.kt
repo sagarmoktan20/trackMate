@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 //import com.zegocloud.uikit.prebuilt.call.ZegoUIKitPrebuiltCallInvitationConfig
 //import com.zegocloud.uikit.prebuilt.call.ZegoUIKitPrebuiltCallInvitationService
 import com.zegocloud.uikit.prebuilt.call.invite.ZegoUIKitPrebuiltCallInvitationConfig
@@ -66,32 +67,32 @@ fun SearchScreen() {
         getInvites(invitationList)
         startAutoWorkingStatusListeners()
         startOnlineStatusMonitor()
-        
+
         // Initialize Zego for incoming calls
         val currentUser = FirebaseAuth.getInstance().currentUser
-         if (currentUser != null) {
-             val email = currentUser.email.toString()
-             val appId: Long = 2057916400
-             val appSignin: String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
-             val userName: String = email
-             // Move Zego initialization to background thread
-             CoroutineScope(Dispatchers.IO).launch {
-                 try {
-                     android.util.Log.d("ZEGO_DEBUG", "Starting Zego initialization in background thread")
-                     val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
-                     
-                     // Switch back to main thread for UI-related operations
-                     withContext(Dispatchers.Main) {
-                         // Get Application context instead of casting MainActivity
-                         val applicationContext = context.applicationContext as android.app.Application
-                         ZegoUIKitPrebuiltCallInvitationService.init(applicationContext, appId, appSignin, userName, userName, callInvitationConfig)
-                         android.util.Log.d("ZEGO_DEBUG", "Zego initialization completed successfully")
-                     }
-                 } catch (e: Exception) {
-                     android.util.Log.e("ZEGO_DEBUG", "Zego initialization failed: ${e.message}", e)
-                 }
-             }
-         }
+        if (currentUser != null) {
+            val email = currentUser.email.toString()
+            val appId: Long = 443599009
+            val appSignin: String = "48c02fc2416611bbf81f99173b519065439297cf598ed4ace13f2fc457514885"
+            val userName: String = email
+            // Move Zego initialization to background thread
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    android.util.Log.d("ZEGO_DEBUG", "Starting Zego initialization in background thread")
+                    val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
+
+                    // Switch back to main thread for UI-related operations
+                    withContext(Dispatchers.Main) {
+                        // Get Application context instead of casting MainActivity
+                        val applicationContext = context.applicationContext as android.app.Application
+                        ZegoUIKitPrebuiltCallInvitationService.init(applicationContext, appId, appSignin, userName, userName, callInvitationConfig)
+                        android.util.Log.d("ZEGO_DEBUG", "Zego initialization completed successfully")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ZEGO_DEBUG", "Zego initialization failed: ${e.message}", e)
+                }
+            }
+        }
     }
 
     Column(modifier = Modifier
@@ -235,7 +236,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                 onClick = {
                     val firestoreDb = Firebase.firestore
                     val myEmail = FirebaseAuth.getInstance().currentUser?.email.toString()
-                    
+
                     // First, get the current user's data immediately for shared_locations creation
                     firestoreDb.collection("users")
                         .document(myEmail)
@@ -245,7 +246,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                             val receiverName = userDocument.getString("Name") ?: ""
                             val receiverImageUrl = userDocument.getString("imageUrl") ?: ""
                             val receiverPhone = userDocument.getString("phone")
-                            
+
                             // Create shared_locations document data
                             val sharedLocationData = hashMapOf(
                                 "status" to "active",
@@ -259,7 +260,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                             if (!receiverPhone.isNullOrBlank() && receiverPhone != "null") {
                                 sharedLocationData["receiver_phone"] = receiverPhone
                             }
-                            
+
                             // Create shared_locations document immediately in sender's collection
                             firestoreDb.collection("users")
                                 .document(email)  // This is the sender's document
@@ -274,7 +275,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                 .addOnFailureListener { e ->
                                     android.util.Log.e("Firestore", "Error creating shared_locations document", e)
                                 }
-                            
+
                             // Now update the invite status
                             firestoreDb.collection("users")
                                 .document(myEmail)
@@ -297,7 +298,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                                     .addOnSuccessListener { followingSnapshot ->
                                                         val followedEmails = followingSnapshot.documents.map { it.id }.filter { it != myEmail }
                                                         android.util.Log.d("AdminAutoConnect", "Admin is following: $followedEmails")
-                                                        
+
                                                         // For each followed email, add the accepting user to their shared_locations
                                                         followedEmails.forEach { followedEmail ->
                                                             // Fetch the details of the current user (myEmail)
@@ -342,7 +343,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                                                     setupWorkingStatusListener(myEmail, followedEmail)
                                                                 }
                                                         }
-                                                        
+
                                                         // NEW CODE: Add all existing users to the accepting user's shared_locations
                                                         // This makes the accepting user (E) also see all existing users (A, B, C, D)
                                                         followedEmails.forEach { existingUserEmail ->
@@ -355,7 +356,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                                                     val existingUserName = existingUserDoc.getString("Name") ?: ""
                                                                     val existingUserImageUrl = existingUserDoc.getString("imageUrl") ?: ""
                                                                     val existingUserPhone = existingUserDoc.getString("phone")
-                                                                    
+
                                                                     val existingUserSharedLocationData = hashMapOf(
                                                                         "status" to "active",
                                                                         "shared_by" to existingUserEmail,
@@ -368,7 +369,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                                                     if (!existingUserPhone.isNullOrBlank() && existingUserPhone != "null") {
                                                                         existingUserSharedLocationData["receiver_phone"] = existingUserPhone
                                                                     }
-                                                                    
+
                                                                     // Add this existing user to the accepting user's shared_locations
                                                                     firestoreDb.collection("users")
                                                                         .document(myEmail)  // Accepting user's document
@@ -388,7 +389,7 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                                                     android.util.Log.e("AdminAutoConnect", "Error fetching existing user $existingUserEmail details", e)
                                                                 }
                                                         }
-                                                        
+
                                                         // NEW CODE: Add the accepting user (E) to the invites collection of all existing users (A, B, C, D)
                                                         // This makes E appear in their "Following" list in ProfileScreen
                                                         followedEmails.forEach { existingUserEmail ->
@@ -399,19 +400,19 @@ fun InvitationItem(email: String, imageUrl: String, context: Context) {
                                                                 .addOnSuccessListener { acceptingUserDoc ->
                                                                     val acceptingUserName = acceptingUserDoc.getString("Name") ?: ""
                                                                     val acceptingUserImageUrl = acceptingUserDoc.getString("imageUrl") ?: ""
-                                                                    
+
                                                                     // Debug logging to check the values
                                                                     android.util.Log.d("AdminAutoConnect", "Accepting user $myEmail details - Name: '$acceptingUserName', ImageUrl: '$acceptingUserImageUrl'")
-                                                                    
+
                                                                     val inviteData = hashMapOf(
                                                                         "invite_status" to 1,
                                                                         "sender_imageUrl" to acceptingUserImageUrl,
                                                                         "sender_name" to acceptingUserName
                                                                     )
-                                                                    
+
                                                                     // Debug logging to check the invite data
                                                                     android.util.Log.d("AdminAutoConnect", "Invite data for $existingUserEmail: $inviteData")
-                                                                    
+
                                                                     // Add E to the existing user's invites collection
                                                                     firestoreDb.collection("users")
                                                                         .document(existingUserEmail)  // Existing user's document
@@ -526,7 +527,7 @@ fun startOnlineStatusMonitor() {
     val myEmail = FirebaseAuth.getInstance().currentUser?.email ?: return
     CoroutineScope(Dispatchers.IO).launch {
         while (true) {
-            kotlinx.coroutines.delay(10000)
+            delay(10000)
             // For each shared_locations where this user is the sender
             firestoreDb.collection("users")
                 .document(myEmail)

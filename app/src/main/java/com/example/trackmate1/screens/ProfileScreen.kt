@@ -34,12 +34,17 @@ import androidx.core.app.NotificationManagerCompat
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.util.Log
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-
+//import androidx.compose.foundation.layout.ColumnScopeInstance.weight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.trackmate1.ui.theme.Trackmate1Theme
 
 
 data class UserProfile(
@@ -240,11 +245,14 @@ fun ProfileScreen(navController: NavHostController) {
                         }
                     }
                     .addOnFailureListener { e ->
-                        android.util.Log.e("ProfileScreen", "Error fetching tasks: ${e.message}")
+                        Log.e("ProfileScreen", "Error fetching tasks: ${e.message}")
                     }
             }
         }
     }
+
+    // State for settings popup dialog
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -254,36 +262,40 @@ fun ProfileScreen(navController: NavHostController) {
             horizontalAlignment = Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Email at top left
-            Text(
-                text = userProfile.email,
-                fontSize = 16.sp,
-                color = Color.Gray,
-                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-            )
-            if (userProfile.isAdmin) {
-                Text(
-                    text = "Admin",
-                    fontSize = 14.sp,
-                    color = Color.Red,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-                )
-            }
-            // Instagram-like top row: Profile Pic + Follower/Following
+            // Top row with email and settings icon
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(top = 1.dp, start = 1.dp), // push away from screen edge
+                horizontalArrangement = Arrangement.End, // align to left
+                verticalAlignment = Alignment.Top
             ) {
-                // Profile Picture (top left)
+                IconButton(
+                    onClick = { showSettingsDialog = true },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = Color.Gray
+                    )
+                }
+            }
+
+
+            // Profile Picture (centered)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 if (userProfile.imageUrl.isNotEmpty()) {
                     Image(
                         painter = rememberAsyncImagePainter(userProfile.imageUrl),
                         contentDescription = "Profile Picture",
                         modifier = Modifier
-                            .size(90.dp)
+                            .size(120.dp)
                             .clip(CircleShape)
                             .border(
                                 width = 3.dp,
@@ -295,7 +307,7 @@ fun ProfileScreen(navController: NavHostController) {
                 } else {
                     Box(
                         modifier = Modifier
-                            .size(90.dp)
+                            .size(120.dp)
                             .clip(CircleShape)
                             .border(
                                 width = 3.dp,
@@ -304,109 +316,181 @@ fun ProfileScreen(navController: NavHostController) {
                             )
                     )
                 }
-                // Follower, Following, and Tasks counts (right of profile pic)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (userProfile.isAdmin) {
+                    Text(
+                        text = "Administrator",
+                        fontSize = 14.sp,
+                        color = Color.Red,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                    )
+                }else{
+                    Text(
+                        text = "Service technician",
+                        fontSize = 14.sp,
+                        color = Color.Red,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // User Name (centered below profile pic)
+                Text(
+                    text = userProfile.name,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Follower, Following, and Tasks counts (below profile pic)
                 Row(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = followerCount.toString(),
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Blue,
-                            modifier = Modifier.clickable { showFollowerDialog = true }
-                        )
-                        Text(
-                            text = "Followers",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = followingCount.toString(),
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Blue,
-                            modifier = Modifier.clickable { showFollowingDialog = true }
-                        )
-                        Text(
-                            text = "Following",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = tasksCount.toString(),
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Green,
-                            modifier = Modifier.clickable { showTasksDialog = true }
-                        )
-                        Text(
-                            text = "Tasks",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black
-                        )
-                    }
+                    // Followers Card
+                    StatCard(
+                        label = "Followers",
+                        count = followerCount,
+                        color = Color.Blue
+                    ) { showFollowerDialog = true }
+
+                    // Following Card
+                    StatCard(
+                        label = "Following",
+                        count = followingCount,
+                        color = Color.Blue
+                    ) { showFollowingDialog = true }
+
+                    // Tasks Card
+                    StatCard(
+                        label = "Tasks",
+                        count = tasksCount,
+                        color = Color.Green
+                    ) { showTasksDialog = true }
                 }
+
+
+
             }
-            // Name and phone number below profile pic, left-aligned
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+
+
+            Spacer(modifier = Modifier.height(0.dp))
+
+            Text(
+                text = "About",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+
+            // Profile information in key-value table format
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
             ) {
-                Column(
-                    modifier = Modifier.width(120.dp),
-                    horizontalAlignment = Alignment.Start
+                Divider(color = Color.LightGray, thickness = 1.dp)
+
+                // Email row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // User Name
+                    // Key (Email)
                     Text(
-                        text = userProfile.name,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(start = 4.dp, bottom = 2.dp)
-                            .fillMaxWidth()
+                        text = "Email:",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.width(100.dp)
                     )
-                    // Phone Number (if available)
+                    Log.d("ProfileScreen", "Email: ${userProfile.email}")
+
+                    // Value (Email address)
+                    Text(
+                        text = userProfile.email,
+                        fontSize = 16.sp,
+                        color = Color.Black
+                    )
+                }
+                Divider(color = Color.LightGray, thickness = 1.dp)
+
+                // Phone number row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Key (Phone)
+                    Text(
+                        text = "Phone:",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.width(100.dp)
+                    )
+
+                    // Value (Phone number or Add button)
                     val phoneValue = userProfile.phone
                     if (!phoneValue.isNullOrEmpty() && phoneValue != "null") {
                         Text(
                             text = phoneValue,
                             fontSize = 16.sp,
-                            color = Color.Gray,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                            color = Color.Gray
                         )
                     } else {
-                        Button(onClick = { showPhoneDialog = true }, modifier = Modifier.padding(start = 4.dp, top = 2.dp)) {
+                        Button(onClick = { showPhoneDialog = true }) {
                             Text("Add PhoneNum")
                         }
                     }
+                    //Key(work status)
+
+
                 }
-            }
+
+                Divider(color = Color.LightGray, thickness = 1.dp)
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Key (Email)
+                    Text(
+                        text = "Work status:",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.width(100.dp)
+                    )
+
+                    // Value (drop down menu of work status)
+
+
             if (isLoading) {
                 CircularProgressIndicator()
             } else {
                 // Working Status Dropdown
-                Text(
-                    text = "Working Status:",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.Black
-                )
+//                Text(
+//                    text = "Working Status:",
+//                    fontSize = 16.sp,
+//                    fontWeight = FontWeight.Medium,
+//                    color = Color.Black
+//                )
 
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = it },
                     modifier = Modifier.fillMaxWidth()
+
                 ) {
                     TextField(
                         value = userProfile.workingStatus,
@@ -415,17 +499,26 @@ fun ProfileScreen(navController: NavHostController) {
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(),
+                            .menuAnchor().width(120.dp).height(50.dp).size(6.dp),
                         colors = ExposedDropdownMenuDefaults.textFieldColors()
                     )
 
                     ExposedDropdownMenu(
                         expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                        onDismissRequest = { expanded = false },
+                        modifier = Modifier
+                            .width(160.dp)        // shrink width
+                            .heightIn(max = 150.dp) // shrink height if too many items
                     ) {
                         workingStatusOptions.forEach { status ->
                             DropdownMenuItem(
-                                text = { Text(status) },
+                                modifier = Modifier.height(36.dp), // smaller row height
+                                text = {
+                                    Text(
+                                        text = status,
+                                        fontSize = 14.sp // smaller text
+                                    )
+                                },
                                 onClick = {
                                     val currentUser = FirebaseAuth.getInstance().currentUser
                                     if (currentUser != null) {
@@ -437,10 +530,18 @@ fun ProfileScreen(navController: NavHostController) {
                                             .document(currentUser.email.toString())
                                             .update("workingStatus", status)
                                             .addOnSuccessListener {
-                                                Toast.makeText(context, "Status updated to $status", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    context,
+                                                    "Status updated to $status",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             }
                                             .addOnFailureListener {
-                                                Toast.makeText(context, "Failed to update status", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    context,
+                                                    "Failed to update status",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             }
                                     }
                                     expanded = false
@@ -448,28 +549,35 @@ fun ProfileScreen(navController: NavHostController) {
                             )
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.weight(1f))
 
-                // Sign Out Button
-                Button(
-                    onClick = {
-                        signOut(
-                            context,
-                            webClientId = "9964737077-gp26ao3ddcl27dni79sd6ugkkf1hpn2p.apps.googleusercontent.com"
-                        ) {
-                            Toast.makeText(context, "Signed Out", Toast.LENGTH_SHORT).show()
-                            navController.navigate(NavigationItems.Login.route) {
-                                popUpTo(0)
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Sign Out", color = Color.White, fontSize = 20.sp)
-                }
+                  //  Spacer(modifier = Modifier.weight(1f))
             }
+                }
+                Divider(color = Color.LightGray, thickness = 1.dp)
+
+            }
+                Divider(color = Color.LightGray, thickness = 1.dp)
+
+            }
+                // Sign Out Button
+//                Button(
+//                    onClick = {
+//                        signOut(
+//                            context,
+//                            webClientId = "9964737077-gp26ao3ddcl27dni79sd6ugkkf1hpn2p.apps.googleusercontent.com"
+//                        ) {
+//                            Toast.makeText(context, "Signed Out", Toast.LENGTH_SHORT).show()
+//                            navController.navigate(NavigationItems.Login.route) {
+//                                popUpTo(0)
+//                            }
+//                        }
+//                    },
+//                    modifier = Modifier.fillMaxWidth()
+//                ) {
+//                    Text(text = "Sign Out", color = Color.White, fontSize = 20.sp)
+//                }
+
 
             // Phone input dialog
             if (showPhoneDialog) {
@@ -819,11 +927,96 @@ fun ProfileScreen(navController: NavHostController) {
                 )
             }
 
+            // Settings dialog
+            if (showSettingsDialog) {
+                AlertDialog(
+                    onDismissRequest = { showSettingsDialog = false },
+                    title = { Text("Settings") },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Button(
+                                onClick = {
+                                    showSettingsDialog = false
+                                    showPhoneDialog = true
 
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Green)
+                            ) {
+                                Text("Change Phone Number", color = Color.White)
+                            }
+
+                            Button(
+                                onClick = {
+                                    showSettingsDialog = false
+                                    signOut(
+                                        context,
+                                        webClientId = "9964737077-gp26ao3ddcl27dni79sd6ugkkf1hpn2p.apps.googleusercontent.com"
+                                    ) {
+                                        Toast.makeText(context, "Signed Out", Toast.LENGTH_SHORT).show()
+                                        navController.navigate(NavigationItems.Login.route) {
+                                            popUpTo(0)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            ) {
+                                Text("Sign Out", color = Color.White)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showSettingsDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
+@Composable
+fun StatCard(
+    label: String,
+    count: Int,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            //.weight(1f) // equal space for each
+            .padding(6.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        border = BorderStroke(1.dp, Color.LightGray),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = count.toString(),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.Black
+            )
+        }
+    }
+}
 fun signOut(context: Context, webClientId: String, onComplete: () -> Unit) {
     Firebase.auth.signOut()
     val googleSignInOption = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -842,6 +1035,8 @@ fun signOut(context: Context, webClientId: String, onComplete: () -> Unit) {
 //@Composable
 //fun ProfilePreview(){
 //   Trackmate1Theme  {
-//        ProfileScreen()
+//        ProfileScreen(
+//            navController = TODO()
+//        )
 //    }
 //}

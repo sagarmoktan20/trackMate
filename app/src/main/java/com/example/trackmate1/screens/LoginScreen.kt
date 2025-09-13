@@ -7,11 +7,29 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.example.trackmate1.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -117,8 +135,8 @@ fun LoginScreen(navController: NavHostController) {
                             val email = currentUser?.email.toString();
                             val phoneNumber = currentUser?.phoneNumber.toString();
                             val image = currentUser?.photoUrl.toString();
-                            val appId: Long = 2057916400
-                            val appSignin: String = "3b9c161194ee177099ee4febdb5dc7816f07c3ae278b53af949ae36e458594e9"
+                            val appId: Long = 443599009
+                            val appSignin: String = "48c02fc2416611bbf81f99173b519065439297cf598ed4ace13f2fc457514885"
                             val userName: String = email
                             val callInvitationConfig = ZegoUIKitPrebuiltCallInvitationConfig()
 
@@ -131,7 +149,7 @@ fun LoginScreen(navController: NavHostController) {
                                         if (existingDoc.exists()) {
                                             val existingPhone = existingDoc.getString("phone")
                                             val existingName = existingDoc.getString("Name")
-                                            val existingImageUrl = existingDoc.getString("imageUrl")
+                                             val existingImageUrl = existingDoc.getString("imageUrl")
                                             val updateData = mutableMapOf<String, Any>()
 
                                             if (!name.isNullOrBlank() && name != "null" && name != existingName) {
@@ -143,7 +161,9 @@ fun LoginScreen(navController: NavHostController) {
                                             }
                                             if (!image.isNullOrBlank() && image != "null" && image != existingImageUrl) {
                                                 updateData["imageUrl"] = image
+                                                updateData["email"] = email
                                             }
+
 
                                             if (updateData.isNotEmpty()) {
                                                 db.collection("users")
@@ -217,17 +237,82 @@ fun LoginScreen(navController: NavHostController) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = if (isLoggedIn) "Welcome Back!" else "Please Log In")
-        AndroidView(modifier = Modifier.fillMaxWidth().height(48.dp),
-            factory = { context ->
-                SignInButton(context).apply {
-                    setSize(SignInButton.SIZE_WIDE)
-                    setOnClickListener {
-                        val signInIntent = googleSignInClient.signInIntent
-                        launcher.launch(signInIntent)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colorResource(id = R.color.green)),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(80.dp))
+        
+        // TrackMate Logo
+        Image(
+            painter = painterResource(id = R.drawable.icon1),
+            contentDescription = "TrackMate Logo",
+            modifier = Modifier
+                .size(150.dp)
+                .clip(RoundedCornerShape(80.dp))
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // App Name
+        Text(
+            text = "TrackMate",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            fontSize = 28.sp
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Tagline
+        Text(
+            text = "Track smarter. Work better.",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = Color.DarkGray,
+            modifier = Modifier.padding(horizontal = 32.dp)
+        )
+        
+        // Use weight to push button down
+        Spacer(modifier = Modifier.weight(0.8f))
+        
+        // Google Sign-In Button with rounded corners
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .clip(RoundedCornerShape(20.dp))
+        ) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                factory = { context ->
+                    SignInButton(context).apply {
+                        setSize(SignInButton.SIZE_WIDE)
+                        setOnClickListener {
+                            val signInIntent = googleSignInClient.signInIntent
+                            launcher.launch(signInIntent)
+                        }
                     }
-                }
-            })
+                })
+        }
+        
+        Spacer(modifier = Modifier.height(65.dp))
+        
+        // Terms & Privacy Policy Text
+        Text(
+            text = "By signing in, you agree to our Terms & Privacy Policy",
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            color = Color.DarkGray,
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .clickable { /* Will handle later */ }
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
